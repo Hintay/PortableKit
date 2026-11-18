@@ -66,6 +66,17 @@ const char *const kJapaneseFonts[] = {
     "C:/Windows/Fonts/msgothic.ttc",
 };
 
+// Merged after the Japanese face for the Simplified Chinese characters it
+// lacks (a Japanese face has no 总 or 戏): save titles and details are the
+// game's own text, in whatever language it was released or translated in.
+// Noto Sans CJK has them all already, so Linux needs none of these.
+const char *const kChineseFonts[] = {
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/simsun.ttc",
+};
+
 bool exists(const char *path) {
     std::error_code ec;
     return std::filesystem::is_regular_file(install::path_from_utf8(path), ec);
@@ -107,6 +118,13 @@ void load_fonts() {
         ImFontConfig merge;
         merge.MergeMode = true;
         io.Fonts->AddFontFromFileTTF(candidate.c_str(), 0.0f, &merge);
+        break;
+    }
+    for (const char *candidate : kChineseFonts) {
+        if (!exists(candidate)) continue;
+        ImFontConfig merge;
+        merge.MergeMode = true;
+        io.Fonts->AddFontFromFileTTF(candidate, 0.0f, &merge);
         break;
     }
 }
