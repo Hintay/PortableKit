@@ -8,8 +8,9 @@
 // console's flash, which a dumped disc does not contain, so sceLibFont glyphs
 // are rasterised from a TrueType or OpenType font on the host: the player's
 // choice (settings text.font, or <prefix>_FONT), with a Japanese system font as
-// the fallback for every glyph the chosen font lacks. A Chinese release
-// (GameProfile::dialog_language) falls back to a face of its own script.
+// the fallback for every glyph the chosen font lacks. A Chinese or Korean
+// release (GameProfile::dialog_language) falls back to a face of its own
+// script.
 //
 // How the game uses the glyphs, traced with <prefix>_TRACE_FONT=1:
 //
@@ -120,9 +121,10 @@ void start_catalog();
 void parse_value(const std::string &value, std::string &path, int &face);
 
 // An installed face drawn for the script of `language` (the PSP's numbers:
-// 10 Traditional, 11 Simplified Chinese), where a Japanese face would shape
-// some characters differently. Empty path for other languages and when the
-// system has none: the Japanese faces serve.
+// 9 Korean, 10 Traditional, 11 Simplified Chinese): a Japanese face shapes
+// some Chinese characters differently, and the ones macOS and Windows have
+// lack Hangul. Empty path for other languages and when the system has none:
+// the Japanese faces serve.
 struct ScriptFace {
     std::string path;  // UTF-8
     int face{};        // index in a collection

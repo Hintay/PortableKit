@@ -290,9 +290,10 @@ struct GameProfile {
     // still sees the console its code expects. The system's own dialogs
     // (the save-data list) are drawn in it: Japanese 0, English 1,
     // Traditional Chinese 10 and Simplified Chinese 11 have their own text,
-    // the rest English. A Chinese one also draws the game's text, and the
-    // interface's CJK characters, with a face of that script where the
-    // system has one: a Japanese face shapes some characters differently.
+    // the rest English. A Chinese or Korean one (9) also draws the game's
+    // text, and the interface's CJK characters, with a face of that script
+    // where the system has one: a Japanese face shapes some Chinese
+    // characters differently, and may have no Hangul.
     std::uint32_t dialog_language = kFollowSystemLanguage;
 
     // --- Text ----------------------------------------------------------------

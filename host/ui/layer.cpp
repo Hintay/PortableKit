@@ -113,8 +113,9 @@ void load_fonts() {
         std::cout << "[ui] no system font found; using Dear ImGui's own\n";
         return;
     }
-    // A Chinese interface's or release's script before the Japanese face, so
-    // the characters both have take its shapes.
+    // A Chinese interface's script, or a Chinese or Korean release's, before
+    // the Japanese face, so the characters both have take its shapes and
+    // Hangul is there.
     const std::string interface_language = i18n::current_code();
     const fonts::ScriptFace script =
         fonts::script_face(interface_language == "zh-Hans" ? 11u : text_language(portablekit::game()));

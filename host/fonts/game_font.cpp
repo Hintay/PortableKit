@@ -63,10 +63,10 @@ const char *const kFontCandidates[] = {
     "C:/Windows/Fonts/meiryo.ttc",
 };
 
-// Faces of one Chinese script, in order, each by its file and the start of
-// its full name, which picks it out of a collection.
+// Faces of one script, in order, each by its file and the start of its full
+// name, which picks it out of a collection.
 struct ScriptCandidate {
-    std::uint32_t language;  // 10 Traditional, 11 Simplified Chinese
+    std::uint32_t language;  // 9 Korean, 10 Traditional, 11 Simplified Chinese
     const char *path;
     const char *name;
 };
@@ -87,6 +87,15 @@ constexpr ScriptCandidate kScriptCandidates[] = {
     {10u, "/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"},
     {10u, "/run/host/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"},
     {10u, "C:/Windows/Fonts/msjh.ttc", "Microsoft JhengHei"},
+    // The Japanese faces macOS and Windows fall back to have no Hangul.
+    {9u, "/System/Library/Fonts/AppleSDGothicNeo.ttc", "Apple SD Gothic Neo"},
+    {9u, "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK KR"},
+    {9u, "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK KR"},
+    {9u, "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK KR"},
+    {9u, "/run/host/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK KR"},
+    {9u, "/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK KR"},
+    {9u, "/run/host/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK KR"},
+    {9u, "C:/Windows/Fonts/malgun.ttf", "Malgun Gothic"},
 };
 
 // Where installed fonts are looked for. The fonts folder in the data
@@ -349,6 +358,9 @@ struct State {
     bool loaded{};
     std::unique_ptr<Face> chosen;    // null: the fallback is used for everything
     std::unique_ptr<Face> fallback;
+    // Behind a script's face, the default face it replaced: the script
+    // faces macOS ships lack accented Latin letters the Japanese ones have.
+    std::unique_ptr<Face> base;
     std::string problem;
     int bold{};
     int baseline{kBaseline};  // row of the cell the baselines are on
@@ -369,18 +381,21 @@ void load(State &s) {
     s.bold = static_cast<int>(settings::current().font_weight);
     std::string error;
     if (!s.fallback) {
-        // A Chinese release's own script first.
-        const ScriptFace script = script_face(text_language(game()));
-        if (!script.path.empty()) s.fallback = load_face(script.path, script.face, error);
+        std::unique_ptr<Face> standard;
         for (const char *candidate : kFontCandidates) {
-            if (s.fallback) break;
-            s.fallback = load_face(candidate, 0, error);
+            if (standard) break;
+            standard = load_face(candidate, 0, error);
         }
         // A release's own font in fonts/ next to the executable comes last.
         for (const std::filesystem::path &bundled : bundled_fonts()) {
-            if (s.fallback) break;
-            s.fallback = load_face(install::path_to_utf8(bundled), 0, error);
+            if (standard) break;
+            standard = load_face(install::path_to_utf8(bundled), 0, error);
         }
+        // A Chinese or Korean release's own script first, the default behind.
+        const ScriptFace script = script_face(text_language(game()));
+        if (!script.path.empty()) s.fallback = load_face(script.path, script.face, error);
+        if (s.fallback) s.base = std::move(standard);
+        else s.fallback = std::move(standard);
     }
     const std::string &value = settings::current().font;
     if (!value.empty()) {
@@ -402,6 +417,7 @@ void load(State &s) {
         s.baseline = pick_baseline(*used);
         if (s.chosen) size_face(*s.chosen, s.baseline);
         if (s.fallback) size_face(*s.fallback, s.baseline);
+        if (s.base) size_face(*s.base, s.baseline);
     }
     if (used == nullptr) {
         std::cout << "[font] no TrueType font found; the game's text stays blank. Choose one in the menu or set "
@@ -410,6 +426,7 @@ void load(State &s) {
     }
     std::cout << "Fonts: game text from " << used->name << " (" << used->path << "), " << used->em << " px em, baseline " << s.baseline;
     if (s.chosen && s.fallback) std::cout << "; missing glyphs from " << s.fallback->name;
+    if (s.base) std::cout << (s.chosen ? ", then " : "; missing glyphs from ") << s.base->name;
     std::cout << "\n";
 }
 
@@ -423,7 +440,7 @@ State &loaded_state() {
 // shifted inside it.
 Layout lay_out(State &s, std::uint32_t code) {
     Layout layout;
-    for (const Face *face : {s.chosen.get(), s.fallback.get()}) {
+    for (const Face *face : {s.chosen.get(), s.fallback.get(), s.base.get()}) {
         if (face == nullptr) continue;
         const int glyph = stbtt_FindGlyphIndex(&face->info, static_cast<int>(code));
         if (glyph == 0) continue;
