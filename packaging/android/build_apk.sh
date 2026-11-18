@@ -71,6 +71,8 @@ cp "$kit/LICENSE" "$work/assets/licenses/PortableKit-LICENSE.txt"
 cp "$kit/third_party/imgui/LICENSE.txt" "$work/assets/licenses/DearImGui-LICENSE.txt"
 cp "$kit/third_party/tiny_aes/UNLICENSE" "$work/assets/licenses/tiny-AES-c-UNLICENSE.txt"
 cp "$kit/third_party/xxhash/LICENSE" "$work/assets/licenses/xxHash-LICENSE.txt"
+cp "$kit/third_party/libchdr/LICENSE.txt" "$work/assets/licenses/libchdr-LICENSE.txt"
+cp "$kit/third_party/libchdr/NOTICES.txt" "$work/assets/licenses/libchdr-NOTICES.txt"
 game_repo="${GAME_REPO:-$(git -C "$game_res" rev-parse --show-toplevel 2>/dev/null || echo "$game_res")}"
 if [[ -f "$game_repo/LICENSE" ]]; then
     cp "$game_repo/LICENSE" "$work/assets/licenses/Game-LICENSE.txt"

@@ -32,6 +32,12 @@ Read and write the PNG images of HD texture packs. Copyright (c) 2017 Sean Barre
 
 Hashes textures for HD texture packs. Copyright (c) 2012-2021 Yann Collet. BSD 2-Clause License: `xxHash-LICENSE.txt`. <https://github.com/Cyan4973/xxHash>
 
+### libchdr
+
+Reads disc images in CHD format. Copyright Romain Tisserand. BSD 3-Clause License: `libchdr-LICENSE.txt`. <https://github.com/rtissera/libchdr>
+
+It brings the decoders a CHD may use, whose notices are in `libchdr-NOTICES.txt`: miniz 3.1.2 (MIT), the Zstandard 1.5.7 decompressor (BSD), LZMA SDK 26.02 (public domain) and dr_flac (public domain or MIT-0).
+
 ## Shipped as separate libraries
 
 These are dynamically linked shared libraries: in `PortableKit.app/Contents/Frameworks/` on macOS, next to `portablekit.exe` on Windows. They are unmodified builds of the upstream releases below. You may replace them with your own builds of the same or a compatible version.

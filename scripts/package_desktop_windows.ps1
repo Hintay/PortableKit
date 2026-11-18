@@ -203,6 +203,8 @@ Copy-Item (Join-Path $bin 'FFmpeg-LICENSE.txt'), (Join-Path $bin 'FFmpeg-SOURCE.
 Copy-Item (Join-Path $kitDir 'third_party\imgui\LICENSE.txt') (Join-Path $licenses 'DearImGui-LICENSE.txt')
 Copy-Item (Join-Path $kitDir 'third_party\tiny_aes\UNLICENSE') (Join-Path $licenses 'tiny-AES-c-UNLICENSE.txt')
 Copy-Item (Join-Path $kitDir 'third_party\xxhash\LICENSE') (Join-Path $licenses 'xxHash-LICENSE.txt')
+Copy-Item (Join-Path $kitDir 'third_party\libchdr\LICENSE.txt') (Join-Path $licenses 'libchdr-LICENSE.txt')
+Copy-Item (Join-Path $kitDir 'third_party\libchdr\NOTICES.txt') (Join-Path $licenses 'libchdr-NOTICES.txt')
 Copy-Item (Join-Path $Toolchain 'LICENSE.TXT') (Join-Path $licenses 'llvm-mingw-LICENSE.txt')
 $mingwNotices = Join-Path $Toolchain 'x86_64-w64-mingw32\share\mingw32'
 if (Test-Path $mingwNotices) {

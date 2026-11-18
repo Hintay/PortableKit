@@ -428,6 +428,8 @@ cp "$build_dir/bin/lib/FFmpeg-COPYING.LGPLv2.1.txt" "$build_dir/bin/lib/FFmpeg-S
 cp "$kit_dir/third_party/imgui/LICENSE.txt" "$licenses/DearImGui-LICENSE.txt"
 cp "$kit_dir/third_party/tiny_aes/UNLICENSE" "$licenses/tiny-AES-c-UNLICENSE.txt"
 cp "$kit_dir/third_party/xxhash/LICENSE" "$licenses/xxHash-LICENSE.txt"
+cp "$kit_dir/third_party/libchdr/LICENSE.txt" "$licenses/libchdr-LICENSE.txt"
+cp "$kit_dir/third_party/libchdr/NOTICES.txt" "$licenses/libchdr-NOTICES.txt"
 cp "$sources/NotoSansCJK-LICENSE.txt" "$licenses/NotoSansCJK-OFL.txt"
 for entry in ${extra_licenses[@]+"${extra_licenses[@]}"}; do
     cp "${entry#*=}" "$licenses/${entry%%=*}-LICENSE.txt"

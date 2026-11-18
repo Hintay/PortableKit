@@ -139,6 +139,8 @@ cp "$build/bin/lib/FFmpeg-COPYING.LGPLv2.1.txt" "$build/bin/lib/FFmpeg-SOURCE.tx
 cp "$kit_dir/third_party/imgui/LICENSE.txt" "$stage/licenses/DearImGui-LICENSE.txt"
 cp "$kit_dir/third_party/tiny_aes/UNLICENSE" "$stage/licenses/tiny-AES-c-UNLICENSE.txt"
 cp "$kit_dir/third_party/xxhash/LICENSE" "$stage/licenses/xxHash-LICENSE.txt"
+cp "$kit_dir/third_party/libchdr/LICENSE.txt" "$stage/licenses/libchdr-LICENSE.txt"
+cp "$kit_dir/third_party/libchdr/NOTICES.txt" "$stage/licenses/libchdr-NOTICES.txt"
 cp "$sources/NotoSansCJK-LICENSE.txt" "$stage/licenses/NotoSansCJK-OFL.txt"
 
 step "Checking the staged program"
