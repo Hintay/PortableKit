@@ -41,6 +41,13 @@ bool is_known_executable(std::string_view executable_sha256) {
            find_variant(executable_sha256) != nullptr;
 }
 
+std::uint32_t text_language(const GameProfile &profile) {
+    std::uint32_t language = profile.dialog_language;
+    if (g_active_variant != nullptr && g_active_variant->dialog_language != kProfileDialogLanguage)
+        language = g_active_variant->dialog_language;
+    return language == kFollowSystemLanguage ? profile.system_language : language;
+}
+
 void set_active_variant(const ProfileVariant *variant) { g_active_variant = variant; }
 const ProfileVariant *active_variant() { return g_active_variant; }
 

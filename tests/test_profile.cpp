@@ -31,6 +31,11 @@ constexpr ProfileVariant kVariants[] = {
      .name = "Other release",
      .encrypted_executable_sha256 = "2222222222222222222222222222222222222222222222222222222222222222",
      .executable_sha256 = "3333333333333333333333333333333333333333333333333333333333333333"},
+    {.key = "text",
+     .name = "Text translation",
+     .executable_sha256 = "4444444444444444444444444444444444444444444444444444444444444444",
+     .same_code_as_profile = true,
+     .dialog_language = 1u},
 };
 
 } // namespace

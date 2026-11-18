@@ -414,7 +414,9 @@ int main(int argc, char **argv) {
         psprecomp::Runtime runtime(ram_bytes);
         for (const EmbeddedNid &entry : kEmbeddedNids) runtime.nids().add(entry.library, entry.nid, entry.name);
         (void)elf.load_and_relocate(runtime.memory(), load_base);
-        if (known_executable && variant == nullptr) {
+        if (known_executable && (variant == nullptr || variant->same_code_as_profile)) {
+            // The profile's own executable, or an edition whose code is the
+            // same byte for byte: the linked corpus runs it.
             psprecomp::register_generated_functions(runtime);
         } else if (variant != nullptr) {
             // An edition's corpus is a library of its own (generated-variants/<key>/).

@@ -41,7 +41,13 @@ int main() {
     set_active_variant(find_variant(other));
     check(active_overlay_slots().empty() && active_patch_loaded_image() == nullptr,
           "an edition that changes nothing keeps the profile's own");
+    const std::uint32_t own_language = text_language(game());
+    check(own_language != 1u, "the stand-in profile's own dialog language is not the translation's");
+    set_active_variant(find_variant(std::string(64, '4')));
+    check(text_language(game()) == 1u && active_variant()->same_code_as_profile,
+          "an edition's own dialog language applies while it runs");
     set_active_variant(nullptr);
+    check(text_language(game()) == own_language, "without an edition, the profile's dialog language applies");
 
     if (g_failures != 0) std::printf("%d failed\n", g_failures);
     return g_failures == 0 ? 0 : 1;

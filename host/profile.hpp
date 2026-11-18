@@ -156,6 +156,9 @@ struct CameraDriver {
     float (*degrees_per_second)() = nullptr;
 };
 
+// ProfileVariant::dialog_language: the profile's own GameProfile::dialog_language.
+inline constexpr std::uint32_t kProfileDialogLanguage = 0xFFFFFFFEu;
+
 // One edition of the game a profile covers beside the one its own fields
 // describe: another executable of the same disc id, such as the release with
 // a fan patch applied (FUComplete on Monster Hunter Portable 2nd G) or a
@@ -173,6 +176,15 @@ struct ProfileVariant {
     void (*register_extra_hle)(HleRegistrar &) = nullptr;
     void (*patch_loaded_image)(psprecomp::Runtime &, const psprecomp::Elf32Image &) = nullptr;
     std::span<const std::uint32_t> overlay_slots = {};
+    // Its code is the profile's own executable's, byte for byte, and only its
+    // data differs (a translation that changes text alone): the corpus linked
+    // into the port runs it, and it needs no corpus of its own. Set it only
+    // after checking: a corpus generated from this executable must differ
+    // from the profile's in nothing but the hash it records.
+    bool same_code_as_profile = false;
+    // The language of its system dialogs (GameProfile::dialog_language), for
+    // an edition in another language than the profile's own.
+    std::uint32_t dialog_language = kProfileDialogLanguage;
 };
 
 // GameProfile::dialog_language: draw the system's dialogs in the language the
@@ -352,10 +364,9 @@ struct GameProfile {
 // through this and nothing else.
 [[nodiscard]] const GameProfile &game();
 
-// GameProfile::dialog_language with kFollowSystemLanguage resolved.
-[[nodiscard]] inline std::uint32_t text_language(const GameProfile &profile) {
-    return profile.dialog_language == kFollowSystemLanguage ? profile.system_language : profile.dialog_language;
-}
+// GameProfile::dialog_language, or the running edition's, with
+// kFollowSystemLanguage resolved.
+[[nodiscard]] std::uint32_t text_language(const GameProfile &profile);
 
 // --- Editions (ProfileVariant) ----------------------------------------------
 // The edition whose executable, or encrypted EBOOT.BIN, has this SHA-256; null
