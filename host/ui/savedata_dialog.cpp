@@ -864,12 +864,13 @@ void savedata_dialog_frame() {
     const Frame f = screen_frame();
     ImDrawList *draw = ImGui::GetBackgroundDrawList();
     // The save's picture over the game's last frame, as the PSP shows it; a
-    // game that gives none keeps its own screen behind, darkened.
+    // game that gives none keeps its own screen behind, dimmed only by an
+    // eighth so it stays readable.
     if (textures().picture != nullptr && textures().picture_valid)
         draw->AddImage(textures().picture->GetTexRef(), f.at(0.0f, 0.0f), f.at(kScreenWidth, kScreenHeight), {0, 0},
                        {1, 1}, faded(IM_COL32_WHITE));
     else
-        draw->AddRectFilled({0.0f, 0.0f}, ImGui::GetIO().DisplaySize, faded(IM_COL32(0, 0, 0, 170)));
+        draw->AddRectFilled({0.0f, 0.0f}, ImGui::GetIO().DisplaySize, faded(IM_COL32(0, 0, 0, 32)));
 
     switch (d.screen) {
     case Screen::List:
