@@ -146,7 +146,17 @@ Block cmac(const Aes128 &cipher, std::span<const std::uint8_t> data) {
 }
 
 Block data_file_hash(std::span<const std::uint8_t> encrypted_file, CryptMode mode, const Block *game_key) {
-    return mode_hash(encrypted_file, mode, mode == CryptMode::Mode1 ? nullptr : game_key);
+    const Block *key = mode == CryptMode::Mode1 ? nullptr : game_key;
+    const std::size_t tail = encrypted_file.size() < kEncryptedHeaderSize
+                                 ? 0u
+                                 : (encrypted_file.size() - kEncryptedHeaderSize) % 16u;
+    if (tail == 0u) return mode_hash(encrypted_file, mode, key);
+    // A file that ends inside a block: PPSSPP writes the header and the
+    // data's own length, and hashes the whole last block with the bytes past
+    // the data cleared to zero.
+    std::vector<std::uint8_t> whole(encrypted_file.begin(), encrypted_file.end());
+    whole.resize(whole.size() + (16u - tail), 0u);
+    return mode_hash(whole, mode, key);
 }
 
 std::vector<std::uint8_t> encrypt_data(std::span<const std::uint8_t> plain, CryptMode mode, const Block *game_key,
