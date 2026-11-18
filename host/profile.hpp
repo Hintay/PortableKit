@@ -134,6 +134,10 @@ struct ProfileVariant {
     std::span<const std::uint32_t> overlay_slots = {};
 };
 
+// GameProfile::dialog_language: draw the system's dialogs in the language the
+// game is told the console uses.
+inline constexpr std::uint32_t kFollowSystemLanguage = 0xFFFFFFFFu;
+
 struct GameProfile {
     // --- What the port is called -------------------------------------------
     const char *app_name;          // the executable: "MHP3rdNative"
@@ -280,6 +284,13 @@ struct GameProfile {
     // the game expects; the defaults are a Japanese one.
     std::uint32_t system_language = 0u;
     std::uint32_t confirm_button = 0u;
+    // The language the system's own dialogs (the save-data list) are drawn
+    // in, by the same numbers; kFollowSystemLanguage draws them in
+    // system_language. Apart from it so a translated release can show them
+    // in its translation's language while the game still sees the console
+    // its code expects: Japanese 0, English 1, Traditional Chinese 10 and
+    // Simplified Chinese 11 have their own text, the rest English.
+    std::uint32_t dialog_language = kFollowSystemLanguage;
 
     // --- Text ----------------------------------------------------------------
     // Where the game caches the glyphs it has drawn. Null: a font changed while

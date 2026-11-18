@@ -4,9 +4,12 @@
 // Load, save, delete, sizes and the list modes are answered from those
 // folders; each game uses its own few. <prefix>_TRACE_SAVEDATA prints every
 // request, which is how to find out which a game asks for.
-// No save-data UI is drawn: modes that would show a list act as if the player
-// confirmed the first entry. Every mode, the failures included, reports QUIT
-// after a few polls; see utility_dialog.hpp.
+// The list modes (LISTSAVE, LISTLOAD, LISTDELETE) open the save list over
+// the game (host/ui/savedata_dialog.hpp) and hold the dialog VISIBLE until the
+// player has chosen; without a window, or with <prefix>_NO_SAVEDATA_DIALOG
+// set, they act as if the player confirmed the first entry. Every other mode,
+// the failures included, reports QUIT after a few polls; see
+// utility_dialog.hpp.
 #include "../profile.hpp"
 #include "hle_common.hpp"
 #include "utility_dialog.hpp"
@@ -18,14 +21,21 @@
 
 #include "psprecomp/common.hpp"
 
+#if defined(PORTABLEKIT_HAS_RENDERER)
+#include "save_data/param_sfo.hpp"
+#include "ui/savedata_dialog.hpp"
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -110,6 +120,9 @@ constexpr std::uint32_t kSaveAccessError = 0x80110385u;
 constexpr std::uint32_t kSaveParam = 0x80110388u;
 constexpr std::uint32_t kSizesNoData = 0x801103C7u;
 } // namespace result
+
+// The result of a list mode the player backed out of.
+constexpr std::uint32_t kResultCancelled = 1u;
 
 constexpr std::uint32_t kClusterSize = 0x8000u;
 constexpr std::uint32_t kFreeClusters = 0x8000u;  // 1 GiB
@@ -357,6 +370,16 @@ std::optional<std::string> pick_from_list(psprecomp::GuestMemory &memory, std::u
     return std::nullopt;
 }
 
+// file_time_type's clock is not the system clock everywhere, and not every
+// standard library converts between them; offset by now.
+std::time_t to_time_t(std::filesystem::file_time_type written) {
+    const auto system_time = std::chrono::system_clock::now() +
+                             std::chrono::duration_cast<std::chrono::system_clock::duration>(
+                                 written - std::filesystem::file_time_type::clock::now());
+    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(system_time.time_since_epoch());
+    return static_cast<std::time_t>(seconds.count());
+}
+
 // A save name pattern as LIST takes it: '?' stands for any one character.
 bool name_matches(std::string_view pattern, std::string_view name) {
     if (pattern.size() != name.size()) return false;
@@ -395,13 +418,7 @@ std::uint32_t do_list(psprecomp::GuestMemory &memory, std::uint32_t params) {
         const std::uint32_t at = entries + count * kEntrySize;
         if (!memory.contains(at, kEntrySize)) break;
         memory.store32(at, 0x11FFu);  // a folder, readable and writable
-        // file_time_type's clock is not the system clock everywhere, and not
-        // every standard library converts between them; offset by now.
-        const auto system_time = std::chrono::system_clock::now() +
-                                 std::chrono::duration_cast<std::chrono::system_clock::duration>(
-                                     written - std::filesystem::file_time_type::clock::now());
-        const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(system_time.time_since_epoch());
-        const std::time_t time = static_cast<std::time_t>(seconds.count());
+        const std::time_t time = to_time_t(written);
         std::tm tm{};
 #if defined(_WIN32)
         localtime_s(&tm, &time);
@@ -493,6 +510,160 @@ std::uint32_t run_request(psprecomp::GuestMemory &memory, std::uint32_t params) 
     }
 }
 
+#if defined(PORTABLEKIT_HAS_RENDERER)
+// Where the cursor starts, as the parameter's focus field asks.
+namespace focus {
+constexpr std::uint32_t kName = 0u;  // the entry named by the save name
+constexpr std::uint32_t kFirstList = 1u;
+constexpr std::uint32_t kLastList = 2u;
+constexpr std::uint32_t kLatest = 3u;  // the most recently written save
+constexpr std::uint32_t kOldest = 4u;
+constexpr std::uint32_t kFirstData = 5u;  // the first entry with a save
+constexpr std::uint32_t kLastData = 6u;
+constexpr std::uint32_t kFirstEmpty = 7u;  // the first entry without one
+constexpr std::uint32_t kLastEmpty = 8u;
+} // namespace focus
+
+std::vector<std::uint8_t> read_host_file(const std::filesystem::path &path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return {};
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+// What the list shows for one name: the save's PARAM.SFO titles, icon,
+// picture, when it was written and its size; or a New Data entry.
+ui::SavedataDialogEntry list_entry(const psprecomp::GuestMemory &memory, std::uint32_t params,
+                                   const std::string &save_name) {
+    ui::SavedataDialogEntry entry;
+    entry.save_name = save_name;
+    const auto files = files_for(memory, params, save_name);
+    if (!savedata::save_exists(state().memory_stick, files)) return entry;
+    entry.exists = true;
+    const auto folder = savedata::save_folder(state().memory_stick, files);
+    const auto sfo_bytes = read_host_file(folder / "PARAM.SFO");
+    if (const auto sfo = savedata::ParamSfo::parse(sfo_bytes)) {
+        entry.title = sfo->string("TITLE").value_or("");
+        entry.savedata_title = sfo->string("SAVEDATA_TITLE").value_or("");
+        entry.detail = sfo->string("SAVEDATA_DETAIL").value_or("");
+    }
+    entry.icon0 = read_host_file(folder / "ICON0.PNG");
+    entry.pic1 = read_host_file(folder / "PIC1.PNG");
+    // PARAM.SFO is written last on every save; the folder's own time only
+    // changes when files are added or removed.
+    std::error_code error;
+    const auto written = std::filesystem::last_write_time(folder / "PARAM.SFO", error);
+    if (!error) entry.modified = to_time_t(written);
+    entry.size_bytes = savedata::save_size(state().memory_stick, files);
+    return entry;
+}
+
+std::size_t initial_focus(const psprecomp::GuestMemory &memory, std::uint32_t params,
+                          const std::vector<ui::SavedataDialogEntry> &entries) {
+    if (entries.empty()) return 0u;
+    const auto first = [&](bool exists, bool from_end) -> std::size_t {
+        for (std::size_t n = 0; n < entries.size(); ++n) {
+            const std::size_t i = from_end ? entries.size() - 1u - n : n;
+            if (entries[i].exists == exists) return i;
+        }
+        return 0u;
+    };
+    const auto by_time = [&](bool latest) -> std::size_t {
+        std::size_t best = entries.size();
+        for (std::size_t i = 0; i < entries.size(); ++i) {
+            if (!entries[i].exists) continue;
+            if (best == entries.size() || (latest ? entries[i].modified > entries[best].modified
+                                                  : entries[i].modified < entries[best].modified))
+                best = i;
+        }
+        return best == entries.size() ? first(false, false) : best;
+    };
+    switch (memory.load32(params + param::kFocus)) {
+    case focus::kName: {
+        const std::string name = save_name_at(memory, params + param::kSaveName);
+        for (std::size_t i = 0; i < entries.size(); ++i)
+            if (entries[i].save_name == name) return i;
+        return 0u;
+    }
+    case focus::kFirstList: return 0u;
+    case focus::kLastList: return entries.size() - 1u;
+    case focus::kLatest: return by_time(true);
+    case focus::kOldest: return by_time(false);
+    case focus::kFirstData: return first(true, false);
+    case focus::kLastData: return first(true, true);
+    case focus::kFirstEmpty: return first(false, false);
+    case focus::kLastEmpty: return first(false, true);
+    default: return 0u;
+    }
+}
+
+// Opens the save list for a list mode. The request stays VISIBLE until the
+// player has chosen; the result is written when the list closes. False when
+// the list is not shown, and the request is answered at once instead.
+bool open_list_dialog(psprecomp::GuestMemory &memory, std::uint32_t params) {
+    static const bool disabled = portablekit::env("NO_SAVEDATA_DIALOG") != nullptr;
+    if (disabled) return false;
+    const std::uint32_t mode = memory.load32(params + param::kMode);
+    ui::SavedataDialogRequest request;
+    switch (mode) {
+    case kListSave: request.kind = ui::SavedataDialogKind::Save; break;
+    case kListLoad: request.kind = ui::SavedataDialogKind::Load; break;
+    case kListDelete: request.kind = ui::SavedataDialogKind::Delete; break;
+    default: return false;
+    }
+    auto names = save_name_list(memory, memory.load32(params + param::kSaveNameList));
+    if (names.empty() && mode == kListSave) names.push_back(save_name_at(memory, params + param::kSaveName));
+    for (const auto &name : names) {
+        auto entry = list_entry(memory, params, name);
+        // Loading and deleting list only the saves there are.
+        if (entry.exists || mode == kListSave) request.entries.push_back(std::move(entry));
+    }
+    request.focus = initial_focus(memory, params, request.entries);
+    const GameProfile &profile = portablekit::game();
+    request.language =
+        profile.dialog_language == kFollowSystemLanguage ? profile.system_language : profile.dialog_language;
+    request.confirm_cross = profile.confirm_button == 1u;
+
+    ui::SavedataDialogEntry &fresh = request.new_data;
+    fresh.title = read_cstring(memory, params + param::kTitle, 128u);
+    fresh.savedata_title = read_cstring(memory, params + param::kSavedataTitle, 128u);
+    fresh.detail = read_cstring(memory, params + param::kDetail, 1024u);
+    fresh.icon0 = read_file_data(memory, params + param::kIcon0);
+    fresh.pic1 = read_file_data(memory, params + param::kPic1);
+    // What the folder will hold: the data and the files beside it.
+    fresh.size_bytes = memory.load32(params + param::kDataSize);
+    for (const std::uint32_t field : {param::kIcon0, param::kIcon1, param::kPic1, param::kSnd0})
+        fresh.size_bytes += memory.load32(params + field + 8u);
+
+    std::vector<std::string> listed;
+    for (const auto &entry : request.entries) listed.push_back(entry.save_name);
+    // The result of the last work done, which is what the game reads if the
+    // player then closes the list.
+    auto outcome = std::make_shared<std::uint32_t>(result::kOk);
+    auto perform = [&memory, params, mode, listed, outcome](std::size_t index) {
+        const std::string &name = listed.at(index);
+        write_cstring(memory, params + param::kSaveName, name, 20u);
+        *outcome = mode == kListSave   ? do_save(memory, params, name)
+                   : mode == kListLoad ? do_load(memory, params, name)
+                                       : do_delete(memory, params, name);
+        return *outcome == result::kOk;
+    };
+    auto done = [&memory, params, mode, outcome](ui::SavedataDialogOutcome how, std::size_t) {
+        std::uint32_t code = *outcome;
+        if (how == ui::SavedataDialogOutcome::Cancelled) code = kResultCancelled;
+        else if (how == ui::SavedataDialogOutcome::NoData)
+            code = mode == kListDelete ? result::kDeleteNoData : result::kLoadNoData;
+        memory.store32(params + dialog_common::kResultOffset, code);
+        if (code != result::kOk || trace_savedata())
+            std::cerr << "[savedata] list closed, result " << psprecomp::hex32(code) << "\n";
+        state().dialog.hold(false);
+    };
+    if (!ui::open_game_savedata_dialog(std::move(request), std::move(perform), std::move(done))) return false;
+    memory.store32(params + dialog_common::kResultOffset, result::kOk);
+    if (trace_savedata()) std::cerr << "[savedata] list open, " << names.size() << " names\n";
+    return true;
+}
+#endif
+
 } // namespace
 
 void register_savedata(HleRegistrar &hle, const std::filesystem::path &memory_stick) {
@@ -507,6 +678,14 @@ void register_savedata(HleRegistrar &hle, const std::filesystem::path &memory_st
         if (state().dialog.active())
             std::cerr << "[savedata] InitStart while a dialog is active (status " << state().dialog.status() << ")\n";
         log_request(memory, params);
+#if defined(PORTABLEKIT_HAS_RENDERER)
+        if (open_list_dialog(memory, params)) {
+            state().dialog.start();
+            state().dialog.hold(true);
+            kernel().finish(ctx, 0u);
+            return;
+        }
+#endif
         const std::uint32_t outcome = run_request(memory, params);
         memory.store32(params + dialog_common::kResultOffset, outcome);
         if (outcome != result::kOk || trace_savedata())

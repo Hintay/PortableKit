@@ -10,6 +10,7 @@
 #include "ui/layer.hpp"
 #include "ui/save_screen.hpp"
 #include "ui/texture_pack_screen.hpp"
+#include "ui/savedata_dialog.hpp"
 #include "ui/text_input.hpp"
 #include "ui/touch_overlay.hpp"
 #include "ui/widgets.hpp"
@@ -1559,6 +1560,13 @@ void draw_over_game() {
         layer.end_frame();
         return;
     }
+    // The game's save list, the same way.
+    if (savedata_dialog_open() && !menu) {
+        layer.begin_frame();
+        savedata_dialog_frame();
+        layer.end_frame();
+        return;
+    }
     const double hint_left = menu || settings::current().menu_hint_seen ? -1.0 : hint_seconds_left();
     const bool overlay = network_overlay();
     const bool touch = !menu && layer.renderer().touch_controls_visible();
@@ -1601,7 +1609,7 @@ bool take_quit_request() { return std::exchange(quit_requested(), false); }
 
 bool menu_requested() {
     Layer &layer = Layer::get();
-    if (!layer.attached() || text_input_open()) return false;
+    if (!layer.attached() || text_input_open() || savedata_dialog_open()) return false;
     // The on-screen menu button, then Esc or L3+R3.
     const bool touched = layer.renderer().take_touch_menu();
     return layer.take_menu_toggle() || touched;
