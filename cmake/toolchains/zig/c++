@@ -1,0 +1,3 @@
+#!/bin/sh
+# zig as a cross compiler for x86-64 Linux; see ../zig-linux-x86_64.cmake.
+exec zig c++ -target "${PORTABLEKIT_ZIG_TARGET:-x86_64-linux-gnu.2.35}" -mcpu="${PORTABLEKIT_ZIG_CPU:-x86_64_v3}" "$@"

@@ -228,6 +228,16 @@ else()
             "--ranlib=${_portablekit_ndk_bin}/llvm-ranlib" "--strip=${_portablekit_ndk_bin}/llvm-strip"
             # Pages may be 16 KiB on current devices; the NDK's own flag for it.
             "--extra-ldflags=-Wl,-z,max-page-size=16384")
+    elseif(CMAKE_CROSSCOMPILING)
+        # Another cross build (zig for Linux, say): the build's own compiler
+        # and archiver, for the build's target. nm is only asked about
+        # symbols, which the build machine's llvm-nm reads for any target.
+        string(TOLOWER "${CMAKE_SYSTEM_NAME}" _portablekit_ffmpeg_os)
+        find_program(PORTABLEKIT_FFMPEG_NM NAMES llvm-nm nm)
+        list(APPEND _portablekit_ffmpeg_flags
+            --enable-cross-compile "--target-os=${_portablekit_ffmpeg_os}" "--arch=${CMAKE_SYSTEM_PROCESSOR}"
+            "--cc=${CMAKE_C_COMPILER}" "--cxx=${CMAKE_CXX_COMPILER}" "--ar=${CMAKE_AR}"
+            "--ranlib=${CMAKE_RANLIB}" "--nm=${PORTABLEKIT_FFMPEG_NM}" --disable-stripping)
     elseif(DEFINED ENV{CC})
         list(APPEND _portablekit_ffmpeg_flags "--cc=$ENV{CC}")
     endif()
@@ -250,6 +260,16 @@ else()
         set(_log "${_portablekit_ffmpeg_root}/build")
         _portablekit_ffmpeg_run(configure "${_log}/configure.log"
             sh "${_portablekit_ffmpeg_src}/configure" "--prefix=${_portablekit_ffmpeg_neutral_prefix}" ${_portablekit_ffmpeg_flags})
+        if(CMAKE_CROSSCOMPILING AND NOT ANDROID AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            # glibc dropped <sys/sysctl.h> in 2.32 and keeps sysctl only for
+            # old binaries, but zig's glibc stubs still link it, so
+            # configure's link-only check finds a function libavutil cannot
+            # include the header of.
+            file(READ "${_portablekit_ffmpeg_root}/build/config.h" _portablekit_ffmpeg_config_h)
+            string(REPLACE "#define HAVE_SYSCTL 1" "#define HAVE_SYSCTL 0"
+                _portablekit_ffmpeg_config_h "${_portablekit_ffmpeg_config_h}")
+            file(WRITE "${_portablekit_ffmpeg_root}/build/config.h" "${_portablekit_ffmpeg_config_h}")
+        endif()
         # The licensing in docs/SOURCE_PROVENANCE.md assumes exactly this.
         file(READ "${_log}/configure.log" _portablekit_ffmpeg_configure)
         file(READ "${_log}/config.h" _portablekit_ffmpeg_config)
