@@ -284,12 +284,15 @@ struct GameProfile {
     // the game expects; the defaults are a Japanese one.
     std::uint32_t system_language = 0u;
     std::uint32_t confirm_button = 0u;
-    // The language the system's own dialogs (the save-data list) are drawn
-    // in, by the same numbers; kFollowSystemLanguage draws them in
-    // system_language. Apart from it so a translated release can show them
-    // in its translation's language while the game still sees the console
-    // its code expects: Japanese 0, English 1, Traditional Chinese 10 and
-    // Simplified Chinese 11 have their own text, the rest English.
+    // The language the release's text is in, by the same numbers;
+    // kFollowSystemLanguage takes system_language. Apart from it so a
+    // translated release can be shown as its translation while the game
+    // still sees the console its code expects. The system's own dialogs
+    // (the save-data list) are drawn in it: Japanese 0, English 1,
+    // Traditional Chinese 10 and Simplified Chinese 11 have their own text,
+    // the rest English. A Chinese one also draws the game's text, and the
+    // interface's CJK characters, with a face of that script where the
+    // system has one: a Japanese face shapes some characters differently.
     std::uint32_t dialog_language = kFollowSystemLanguage;
 
     // --- Text ----------------------------------------------------------------
@@ -301,6 +304,11 @@ struct GameProfile {
 // Defined by the port, exactly once. Everything under host/ reads the game
 // through this and nothing else.
 [[nodiscard]] const GameProfile &game();
+
+// GameProfile::dialog_language with kFollowSystemLanguage resolved.
+[[nodiscard]] inline std::uint32_t text_language(const GameProfile &profile) {
+    return profile.dialog_language == kFollowSystemLanguage ? profile.system_language : profile.dialog_language;
+}
 
 // --- Editions (ProfileVariant) ----------------------------------------------
 // The edition whose executable, or encrypted EBOOT.BIN, has this SHA-256; null

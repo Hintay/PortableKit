@@ -1,6 +1,7 @@
 #include "fonts/game_font.hpp"
 
 #include "app_paths.hpp"
+#include "profile.hpp"
 
 #include "install/user_data.hpp"
 #include "settings/settings.hpp"
@@ -60,6 +61,32 @@ const char *const kFontCandidates[] = {
     "/run/host/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
     "C:/Windows/Fonts/msgothic.ttc",
     "C:/Windows/Fonts/meiryo.ttc",
+};
+
+// Faces of one Chinese script, in order, each by its file and the start of
+// its full name, which picks it out of a collection.
+struct ScriptCandidate {
+    std::uint32_t language;  // 10 Traditional, 11 Simplified Chinese
+    const char *path;
+    const char *name;
+};
+constexpr ScriptCandidate kScriptCandidates[] = {
+    {11u, "/System/Library/Fonts/Hiragino Sans GB.ttc", "Hiragino Sans GB"},
+    {11u, "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK SC"},
+    {11u, "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK SC"},
+    {11u, "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK SC"},
+    {11u, "/run/host/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK SC"},
+    {11u, "/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK SC"},
+    {11u, "/run/host/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK SC"},
+    {11u, "C:/Windows/Fonts/msyh.ttc", "Microsoft YaHei"},
+    {10u, "/System/Library/Fonts/STHeiti Medium.ttc", "Heiti TC"},
+    {10u, "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"},
+    {10u, "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"},
+    {10u, "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"},
+    {10u, "/run/host/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"},
+    {10u, "/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"},
+    {10u, "/run/host/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", "Noto Sans CJK TC"},
+    {10u, "C:/Windows/Fonts/msjh.ttc", "Microsoft JhengHei"},
 };
 
 // Where installed fonts are looked for. The fonts folder in the data
@@ -342,9 +369,12 @@ void load(State &s) {
     s.bold = static_cast<int>(settings::current().font_weight);
     std::string error;
     if (!s.fallback) {
+        // A Chinese release's own script first.
+        const ScriptFace script = script_face(text_language(game()));
+        if (!script.path.empty()) s.fallback = load_face(script.path, script.face, error);
         for (const char *candidate : kFontCandidates) {
-            s.fallback = load_face(candidate, 0, error);
             if (s.fallback) break;
+            s.fallback = load_face(candidate, 0, error);
         }
         // A release's own font in fonts/ next to the executable comes last.
         for (const std::filesystem::path &bundled : bundled_fonts()) {
@@ -666,6 +696,23 @@ void parse_value(const std::string &value, std::string &path, int &face) {
         if (std::isdigit(static_cast<unsigned char>(value[i])) == 0) return;
     path = value.substr(0, hash);
     face = std::atoi(value.c_str() + hash + 1);
+}
+
+ScriptFace script_face(std::uint32_t language) {
+    for (const ScriptCandidate &candidate : kScriptCandidates) {
+        if (candidate.language != language) continue;
+        MappedFile file;
+        if (!file.open(install::path_from_utf8(candidate.path))) continue;
+        const int count = std::max(stbtt_GetNumberOfFonts(file.data()), 1);
+        for (int index = 0; index < count && index < 64; ++index) {
+            const int offset = stbtt_GetFontOffsetForIndex(file.data(), index);
+            stbtt_fontinfo info{};
+            if (offset < 0 || stbtt_InitFont(&info, file.data(), offset) == 0) continue;
+            std::string name = face_name(info);
+            if (name.rfind(candidate.name, 0) == 0) return {candidate.path, index, std::move(name)};
+        }
+    }
+    return {};
 }
 
 } // namespace portablekit::fonts

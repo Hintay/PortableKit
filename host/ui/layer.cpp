@@ -6,6 +6,7 @@
 #include "ui/input_script.hpp"
 #include "ui/widgets.hpp"
 
+#include "fonts/game_font.hpp"
 #include "gpu/vulkan_renderer.hpp"
 #include "input/bindings.hpp"
 #include "install/user_data.hpp"
@@ -110,6 +111,15 @@ void load_fonts() {
         io.Fonts->AddFontDefaultVector();
         std::cout << "[ui] no system font found; using Dear ImGui's own\n";
         return;
+    }
+    // A Chinese release's script before the Japanese face, so the characters
+    // both have take its shapes.
+    const fonts::ScriptFace script = fonts::script_face(text_language(portablekit::game()));
+    if (!script.path.empty()) {
+        ImFontConfig merge;
+        merge.MergeMode = true;
+        merge.FontNo = script.face;
+        io.Fonts->AddFontFromFileTTF(script.path.c_str(), 0.0f, &merge);
     }
     std::vector<std::string> japanese(std::begin(kJapaneseFonts), std::end(kJapaneseFonts));
     for (const std::filesystem::path &bundled : bundled_fonts()) japanese.push_back(install::path_to_utf8(bundled));

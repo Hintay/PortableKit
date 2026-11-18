@@ -619,8 +619,7 @@ bool open_list_dialog(psprecomp::GuestMemory &memory, std::uint32_t params) {
     }
     request.focus = initial_focus(memory, params, request.entries);
     const GameProfile &profile = portablekit::game();
-    request.language =
-        profile.dialog_language == kFollowSystemLanguage ? profile.system_language : profile.dialog_language;
+    request.language = text_language(profile);
     request.confirm_cross = profile.confirm_button == 1u;
 
     ui::SavedataDialogEntry &fresh = request.new_data;
