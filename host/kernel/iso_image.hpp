@@ -2,8 +2,8 @@
 
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -11,7 +11,10 @@
 
 namespace portablekit {
 
-// Read-only ISO9660 view of a PSP UMD image. Paths are case-insensitive and
+class DiscReader;
+
+// Read-only ISO9660 view of a PSP UMD image, from an .iso or a CHD of one
+// (kernel/disc_reader.hpp). Paths are case-insensitive and
 // use '/' separators relative to the image root (e.g. "PSP_GAME/USRDIR/DATA.BIN").
 // Listings keep each name as the disc spells it: a game may hash the names
 // it reads from a directory (God of War does) and look them up by its own
@@ -28,6 +31,9 @@ public:
     };
 
     explicit IsoImage(const std::filesystem::path &path);
+    ~IsoImage();
+    IsoImage(IsoImage &&) noexcept;
+    IsoImage &operator=(IsoImage &&) noexcept;
 
     [[nodiscard]] std::optional<Entry> find(std::string path) const;
     [[nodiscard]] std::uint64_t size_bytes() const noexcept { return size_bytes_; }
@@ -39,7 +45,7 @@ private:
     void scan_directory(std::uint32_t lba, std::uint32_t size, const std::string &prefix, int depth);
     [[nodiscard]] static std::string normalize(std::string path);
 
-    std::ifstream file_;
+    std::unique_ptr<DiscReader> reader_;
     std::uint64_t size_bytes_{};
     std::map<std::string, Entry> entries_;
 };

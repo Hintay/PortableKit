@@ -71,6 +71,14 @@ Two more are for a port that goes further than the PSP did, and both are null un
 
 `interpolation_thresholds` is for frame interpolation, which blends the game's frames and must not blend across a camera cut. The angles and fractions it uses to tell a cut from motion hold for any game; its distances are in the game's own world units, and the defaults were measured on Monster Hunter Portable 3rd. A game whose world is on a very different scale gives its own; one that does not, gets those defaults.
 
+`add_on_discs` are for content a game can take from another disc the player owns, such as a sequel that plays its predecessor's cases. Each `AddOnDisc` names the disc ids it accepts and a `build` function. After the main install, and with `<Game>Native --add-disc image`, the installer opens the player's image of that disc and calls `build` with it, the game's own disc and two folders to write into: the memory stick, for files the game downloads, and the disc overlay. The installer moves what `build` wrote into place only once it has finished, so a failure or a cancelled run leaves nothing behind. The disc is read, never copied, and nothing is downloaded. Without any, setup has no such step.
+
+The disc overlay is `disc_overlay/` in the data folder, a tree that mirrors the disc's (matched without regard to case). A file there is read in place of the disc's file of the same path; a `<name>.pkpatch` beside it changes byte ranges of the disc's file instead (`host/kernel/disc_patch.hpp` has the format). A patch records the size and SHA-256 of the file it was made from, and one that does not match the disc is left out with a warning, so a patch made for another edition never reaches the game. `<PREFIX>_NO_DISC_OVERLAY=1` turns the overlay off.
+
+`text` adds a profile's own strings, such as an add-on's description and progress stages, to the interface's translations.
+
+Disc images can be an `.iso` or a CHD made from one with `chdman createdvd` (`host/kernel/disc_reader.hpp`); a CHD is decompressed as it is read, with no copy unpacked to disk. A CD-type CHD is refused with a message saying how to make the right kind.
+
 A driver writes into the game's memory, so check the code it relies on before it writes anything — Yakumo compares every instruction and constant it depends on at start-up, from `patch_loaded_image`, and stays out, saying why, if one differs.
 
 ## Generated code stays out of the repository

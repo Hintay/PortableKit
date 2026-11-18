@@ -15,6 +15,8 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -27,6 +29,7 @@ class Runtime;
 namespace portablekit {
 
 class HleRegistrar;
+class IsoImage;
 namespace gpu::interpolation {
 struct CutThresholds;
 }
@@ -67,6 +70,44 @@ struct TiltControls {
 struct OtherRelease {
     const char *disc_id; // DISC_ID in its PARAM.SFO, e.g. "ULJM05800"
     const char *note;    // a whole sentence, e.g. "This is the original PSP release of the game, ..."
+};
+
+// A translation of one of the profile's own interface texts (an add-on
+// disc's name and description, its build's stages), which the framework's
+// catalogues cannot know.
+struct ProfileText {
+    const char *language;   // an interface language code: "zh-Hans"
+    const char *english;    // the text as the profile gives it
+    const char *translated;
+};
+
+// What an add-on disc's build is given (AddOnDisc::build).
+struct AddOnBuild {
+    IsoImage &add_on;    // the image the player chose
+    IsoImage &game_disc; // the game's own, as installed
+    // Where the build writes: ms0's folder (files the game finds on the memory
+    // stick) and the disc overlay's (files read in place of the disc's;
+    // kernel/disc_patch.hpp for patches). Both start empty; the framework
+    // moves what they hold into place once the build has returned.
+    std::filesystem::path memory_stick;
+    std::filesystem::path disc_overlay;
+    // Progress for the player: a stage name, done and total. Throws
+    // install::InstallCancelled when the player cancels.
+    std::function<void(const std::string &stage, std::uint64_t done, std::uint64_t total)> progress;
+};
+
+// Another disc the game can take content from: an expansion, or an earlier
+// release whose episodes the game plays. Setup offers each one as an optional
+// step after the game's own disc (and `--add-disc image` adds one later); the
+// profile's build turns the player's image into files the game reads, so
+// neither disc is ever changed or shipped.
+struct AddOnDisc {
+    const char *key;         // "season1": lower case, digits and '-'
+    const char *name;        // "Trick x Logic Season 1", for the player
+    const char *description; // what adding it does, a whole sentence
+    std::span<const char *const> disc_ids; // DISC_ID values in its PARAM.SFO it accepts
+    // Throws install::InstallError for a problem the player can act on.
+    void (*build)(const AddOnBuild &);
 };
 
 // Where a game keeps the atlas of glyphs it has drawn, so that changing the
@@ -199,6 +240,11 @@ struct GameProfile {
     // Temporary: meant to go at a port's next planned rebuild of its overlays
     // (for Yakumo, the next release build), and then from here as well.
     const char *legacy_overlay_symbol_prefix = nullptr;
+
+    // Other discs the game can take content from (see AddOnDisc).
+    std::span<const AddOnDisc> add_on_discs = {};
+    // Translations of the profile's own interface texts (see ProfileText).
+    std::span<const ProfileText> text = {};
 
     // --- Save data ---------------------------------------------------------
     const char *save_game_name;             // the main folder, e.g. "ULJM05800"

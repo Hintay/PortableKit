@@ -466,7 +466,7 @@ if(PSPRECOMP_BUILD_TESTS)
     target_include_directories(portablekit_host_check PRIVATE
         "${PORTABLEKIT_ROOT}/host" "${PORTABLEKIT_ROOT}/third_party"
         "${CMAKE_CURRENT_BINARY_DIR}/host_check_nids")
-    target_link_libraries(portablekit_host_check PRIVATE psprecomp_core ${CMAKE_DL_LIBS})
+    target_link_libraries(portablekit_host_check PRIVATE psprecomp_core portablekit_chdr ${CMAKE_DL_LIBS})
     _portablekit_link_hle_extensions(portablekit_host_check)
     find_package(Threads REQUIRED)
     target_link_libraries(portablekit_host_check PRIVATE Threads::Threads)
@@ -488,13 +488,25 @@ if(PSPRECOMP_BUILD_TESTS)
     target_include_directories(portablekit_io_filter_tests PRIVATE
         "${PORTABLEKIT_ROOT}/host" "${PORTABLEKIT_ROOT}/third_party"
         "${CMAKE_CURRENT_BINARY_DIR}/host_check_nids")
-    target_link_libraries(portablekit_io_filter_tests PRIVATE psprecomp_core Threads::Threads ${CMAKE_DL_LIBS})
+    target_link_libraries(portablekit_io_filter_tests PRIVATE psprecomp_core portablekit_chdr Threads::Threads ${CMAKE_DL_LIBS})
     _portablekit_link_hle_extensions(portablekit_io_filter_tests)
     if(WIN32)
         target_link_libraries(portablekit_io_filter_tests PRIVATE ws2_32 iphlpapi)
     endif()
     set_target_properties(portablekit_io_filter_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     add_test(NAME portablekit_io_filter_tests COMMAND portablekit_io_filter_tests)
+endif()
+
+# The disc overlay's patch format and the piecewise SHA-256 it is checked with.
+if(PSPRECOMP_BUILD_TESTS)
+    add_executable(portablekit_disc_patch_tests
+        "${PORTABLEKIT_ROOT}/tests/disc_patch_tests.cpp"
+        "${PORTABLEKIT_ROOT}/host/kernel/disc_patch.cpp")
+    target_compile_features(portablekit_disc_patch_tests PRIVATE cxx_std_20)
+    target_include_directories(portablekit_disc_patch_tests PRIVATE "${PORTABLEKIT_ROOT}/host")
+    target_link_libraries(portablekit_disc_patch_tests PRIVATE psprecomp_core)
+    set_target_properties(portablekit_disc_patch_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+    add_test(NAME portablekit_disc_patch_tests COMMAND portablekit_disc_patch_tests)
 endif()
 
 # The desktop app's keys file as extension modules look keys up in it. The

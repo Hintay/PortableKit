@@ -113,6 +113,8 @@ void apply(const std::string &setting) {
     s.joined.clear();
     if (chosen->entries != nullptr)
         for (std::size_t i = 0; i < *chosen->count; ++i) s.lookup.emplace(chosen->entries[i].english, chosen->entries[i].translated);
+    for (const ProfileText &text : game().text)
+        if (std::strcmp(text.language, chosen->info.code) == 0) s.lookup.emplace(text.english, text.translated);
 }
 
 const char *current_code() {

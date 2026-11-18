@@ -1,5 +1,7 @@
 #include "iso_image.hpp"
 
+#include "kernel/disc_reader.hpp"
+
 #include "psprecomp/common.hpp"
 
 #include <algorithm>
@@ -15,9 +17,8 @@ std::uint32_t read_le32(const std::vector<std::uint8_t> &data, std::size_t offse
 
 } // namespace
 
-IsoImage::IsoImage(const std::filesystem::path &path) : file_(path, std::ios::binary) {
-    if (!file_) throw psprecomp::Error("Cannot open disc image: " + path.string());
-    size_bytes_ = std::filesystem::file_size(path);
+IsoImage::IsoImage(const std::filesystem::path &path) : reader_(open_disc_reader(path)) {
+    size_bytes_ = reader_->size_bytes();
     std::vector<std::uint8_t> primary(kSectorSize);
     if (read(16u * kSectorSize, primary) != primary.size() || primary[1] != 'C' || primary[2] != 'D' ||
         primary[3] != '0' || primary[4] != '0' || primary[5] != '1')
@@ -27,6 +28,10 @@ IsoImage::IsoImage(const std::filesystem::path &path) : file_(path, std::ios::bi
     entries_[""] = Entry{root_lba, root_size, true};
     scan_directory(root_lba, root_size, "", 0);
 }
+
+IsoImage::~IsoImage() = default;
+IsoImage::IsoImage(IsoImage &&) noexcept = default;
+IsoImage &IsoImage::operator=(IsoImage &&) noexcept = default;
 
 std::string IsoImage::normalize(std::string path) {
     std::replace(path.begin(), path.end(), '\\', '/');
@@ -72,12 +77,7 @@ std::optional<IsoImage::Entry> IsoImage::find(std::string path) const {
 }
 
 std::size_t IsoImage::read(std::uint64_t offset, std::span<std::uint8_t> output) {
-    if (offset >= size_bytes_) return 0u;
-    const std::size_t count = static_cast<std::size_t>(std::min<std::uint64_t>(output.size(), size_bytes_ - offset));
-    file_.clear();
-    file_.seekg(static_cast<std::streamoff>(offset));
-    file_.read(reinterpret_cast<char *>(output.data()), static_cast<std::streamsize>(count));
-    return static_cast<std::size_t>(file_.gcount());
+    return reader_->read(offset, output);
 }
 
 std::vector<std::string> IsoImage::list(std::string directory) const {

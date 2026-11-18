@@ -20,7 +20,7 @@ class FileBrowser {
 public:
     struct Options {
         // Files listed unless the player asks for all, as lower-case extensions.
-        std::vector<std::string> extensions{".iso"};
+        std::vector<std::string> extensions{".iso", ".chd"};
         std::string filter_name{".iso"};          // "Showing .iso only"
         std::string listed_name{".iso images"};   // "only .iso images are listed"
         std::string empty_note{"No folders or disc images here."};

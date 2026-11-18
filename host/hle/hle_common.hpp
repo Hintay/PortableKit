@@ -85,7 +85,10 @@ void log_once(const std::string &key, const std::string &message);
 
 void register_threadman(HleRegistrar &hle);
 void register_sysmem(HleRegistrar &hle);
-void register_io(HleRegistrar &hle, const std::filesystem::path &disc_image, const std::filesystem::path &memory_stick);
+// disc_overlay: a host folder of files read in place of the disc's
+// (hle_io.cpp, DiscOverlay); empty for none.
+void register_io(HleRegistrar &hle, const std::filesystem::path &disc_image, const std::filesystem::path &memory_stick,
+                 const std::filesystem::path &disc_overlay = {});
 void register_system(HleRegistrar &hle);
 void register_media(HleRegistrar &hle);
 void register_atrac(HleRegistrar &hle);

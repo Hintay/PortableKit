@@ -6,7 +6,9 @@
 #include "profile.hpp"
 #include "install/user_data.hpp"
 
+#include "kernel/disc_reader.hpp"
 #include "kernel/iso_image.hpp"
+#include "system.hpp"
 #if defined(PORTABLEKIT_ANDROID_APP)
 #include "platform/android_jni.hpp"
 
@@ -101,8 +103,8 @@ Inspection inspect(const std::filesystem::path &path) {
         if (!in.read(magic.data(), magic.size()))
             throw InstallError("\"" + name + "\" is empty or cannot be read.");
         if (std::memcmp(magic.data(), "CISO", 4u) == 0 || std::memcmp(magic.data(), "ZISO", 4u) == 0)
-            throw InstallError("\"" + name + "\" is a compressed image. " + std::string(portablekit::game().project_name) + " needs an uncompressed .iso image of the "
-                               "disc; decompress it first.");
+            throw InstallError("\"" + name + "\" is a CSO/ZSO compressed image. " + std::string(portablekit::game().project_name) + " reads an uncompressed .iso image of the "
+                               "disc or a CHD; decompress it first.");
     }
 
     std::optional<IsoImage> iso;
@@ -208,8 +210,11 @@ void install_checked(const std::filesystem::path &image, ImageStorage storage, c
     Inspection inspection = inspect(image);
     std::filesystem::create_directories(data_dir);
 
-    const std::filesystem::path copied = data_dir / kCopiedImageFile;
-    const std::filesystem::path copying = data_dir / (std::string(kCopiedImageFile) + ".part");
+    // A CHD stays one: the copy keeps its format and its name says so.
+    const char *const copy_name = is_chd_file(image) ? kCopiedChdFile : kCopiedImageFile;
+    const char *const other_name = copy_name == kCopiedChdFile ? kCopiedImageFile : kCopiedChdFile;
+    const std::filesystem::path copied = data_dir / copy_name;
+    const std::filesystem::path copying = data_dir / (std::string(copy_name) + ".part");
     const bool copy = storage == ImageStorage::Copy && !same_file(image, copied);
     if (copy) {
         const std::uint64_t needed = space_needed_to_copy(inspection.info);
@@ -250,7 +255,7 @@ void install_checked(const std::filesystem::path &image, ImageStorage storage, c
     UserSettings settings;
     if (storage == ImageStorage::Copy) {
         if (copy) std::filesystem::rename(copying, copied);
-        settings.disc_image = kCopiedImageFile;
+        settings.disc_image = copy_name;
     } else {
         settings.disc_image = std::filesystem::absolute(image);
     }
@@ -260,6 +265,7 @@ void install_checked(const std::filesystem::path &image, ImageStorage storage, c
     // A copy left from an earlier setup is no longer used.
     std::error_code ec;
     if (storage == ImageStorage::InPlace && !same_file(image, copied)) std::filesystem::remove(copied, ec);
+    if (!same_file(image, data_dir / other_name)) std::filesystem::remove(data_dir / other_name, ec);
 }
 
 } // namespace
@@ -337,6 +343,133 @@ std::filesystem::path copy_image_document(const std::string &uri, const std::fil
 #endif
 
 void InstallerUi::run_task(const std::string &, const std::function<void()> &work) { work(); }
+std::optional<std::filesystem::path> InstallerUi::choose_add_on(const AddOnDisc &) { return std::nullopt; }
+bool InstallerUi::offer_add_on_retry(const AddOnDisc &, const std::string &) { return false; }
+
+namespace {
+
+// Moves every file under `from` to the same place under `to`, replacing what
+// is there.
+void move_tree(const std::filesystem::path &from, const std::filesystem::path &to) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(from, ec)) return;
+    for (auto it = std::filesystem::recursive_directory_iterator(from, ec);
+         !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        const std::filesystem::path target = to / std::filesystem::relative(it->path(), from, ec);
+        std::filesystem::create_directories(target.parent_path(), ec);
+        std::filesystem::rename(it->path(), target, ec);
+        if (ec) {
+            std::filesystem::remove(target, ec);
+            std::filesystem::copy_file(it->path(), target, std::filesystem::copy_options::overwrite_existing, ec);
+        }
+        if (ec) throw InstallError("Could not write " + path_to_utf8(target) + ": " + ec.message() + ".");
+    }
+}
+
+// What the player is shown for an image that is not the add-on.
+std::string disc_id_of(const std::filesystem::path &image, std::string *title) {
+    const std::string name = path_to_utf8(image.filename());
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(image, ec))
+        throw InstallError("\"" + path_to_utf8(image) + "\" is not a file " +
+                           std::string(portablekit::game().project_name) + " can open.");
+    std::optional<IsoImage> iso;
+    try {
+        iso.emplace(image);
+    } catch (const std::exception &) {
+        throw InstallError("\"" + name + "\" is not a disc image " + std::string(portablekit::game().project_name) +
+                           " can read. Choose an uncompressed .iso image.");
+    }
+    const auto entry = iso->find("PSP_GAME/PARAM.SFO");
+    if (!entry || entry->directory) throw InstallError("\"" + name + "\" is not a PSP game disc image.");
+    const auto sfo = parse_sfo(read_file(*iso, *entry));
+    if (const auto found = sfo.find("TITLE"); found != sfo.end() && title != nullptr) *title = found->second;
+    const auto found = sfo.find("DISC_ID");
+    return found == sfo.end() ? std::string() : found->second;
+}
+
+} // namespace
+
+const AddOnDisc &identify_add_on(const std::filesystem::path &image) {
+    std::string title;
+    const std::string id = disc_id_of(image, &title);
+    for (const AddOnDisc &disc : portablekit::game().add_on_discs)
+        for (const char *accepted : disc.disc_ids)
+            if (id == accepted) return disc;
+    std::string names;
+    for (const AddOnDisc &disc : portablekit::game().add_on_discs) names += (names.empty() ? "" : ", ") + std::string(disc.name);
+    throw InstallError("\"" + path_to_utf8(image.filename()) + "\" is " +
+                       (title.empty() ? "disc " + id : title + " (" + id + ")") + ", not a disc " +
+                       std::string(portablekit::game().project_name) + " can add" +
+                       (names.empty() ? "." : " (" + names + ")."));
+}
+
+void add_disc(const AddOnDisc &disc, const std::filesystem::path &image, const std::filesystem::path &data_dir,
+              const ProgressFn &progress) {
+    const AddOnDisc &identified = identify_add_on(image);
+    if (&identified != &disc)
+        throw InstallError("\"" + path_to_utf8(image.filename()) + "\" is " + identified.name + ", not " + disc.name + ".");
+    const auto installation = find_installation(data_dir);
+    std::error_code ec;
+    if (!installation || !std::filesystem::is_regular_file(installation->disc_image, ec))
+        throw InstallError("Set up " + std::string(portablekit::game().game_title) + " first: " + disc.name +
+                           " is added to an installed game.");
+    if (disc.build == nullptr) throw InstallError(std::string(disc.name) + " cannot be added by this build.");
+
+    const std::filesystem::path work = data_dir / (std::string("add-on-") + disc.key + ".partial");
+    std::filesystem::remove_all(work, ec);
+    try {
+        IsoImage add_on(image);
+        IsoImage game_disc(installation->disc_image);
+        AddOnBuild build{add_on, game_disc, work / "ms0", work / "disc_overlay", progress};
+        std::filesystem::create_directories(build.memory_stick);
+        std::filesystem::create_directories(build.disc_overlay);
+        std::cout << "[setup] adding " << disc.name << " from " << path_to_utf8(image) << std::endl;
+        disc.build(build);
+        move_tree(build.memory_stick, portablekit::memory_stick_directory(data_dir));
+        move_tree(build.disc_overlay, portablekit::disc_overlay_directory(data_dir));
+    } catch (const InstallError &) {
+        std::filesystem::remove_all(work, ec);
+        throw;
+    } catch (const InstallCancelled &) {
+        std::filesystem::remove_all(work, ec);
+        throw;
+    } catch (const std::exception &e) {
+        std::filesystem::remove_all(work, ec);
+        throw InstallError(std::string(disc.name) + " could not be added: " + e.what());
+    }
+    std::filesystem::remove_all(work, ec);
+    std::cout << "[setup] added " << disc.name << std::endl;
+}
+
+namespace {
+
+// After the game's own disc: each add-on disc the player wants.
+void offer_add_ons(InstallerUi &ui, const std::filesystem::path &data_dir) {
+    for (const AddOnDisc &disc : portablekit::game().add_on_discs) {
+        for (;;) {
+            const auto image = ui.choose_add_on(disc);
+            if (!image) break;
+            try {
+                ui.run_task("Adding a disc", [&] {
+                    add_disc(disc, *image, data_dir,
+                             [&ui](const std::string &stage, std::uint64_t done, std::uint64_t total) {
+                                 ui.progress(stage, done, total);
+                             });
+                });
+                break;
+            } catch (const InstallCancelled &) {
+                std::cerr << "Setup: adding " << disc.name << " cancelled\n";
+            } catch (const InstallError &e) {
+                std::cerr << "Setup: " << e.what() << "\n";
+                if (!ui.offer_add_on_retry(disc, e.what())) break;
+            }
+        }
+    }
+}
+
+} // namespace
 
 bool run_installer(InstallerUi &ui, const std::filesystem::path &data_dir) {
     for (;;) {
@@ -369,6 +502,7 @@ bool run_installer(InstallerUi &ui, const std::filesystem::path &data_dir) {
                                 ui.progress(stage, done, total);
                             });
                 });
+                offer_add_ons(ui, data_dir);
                 ui.finished(data_dir);
                 return true;
             } catch (const InstallCancelled &) {

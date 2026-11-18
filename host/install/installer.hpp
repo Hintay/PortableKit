@@ -15,6 +15,10 @@
 // The logic here knows nothing about how questions are asked. InstallerUi is
 // the only thing a front end implements: the port's own setup screens
 // (host/ui), or SDL message boxes where those cannot be shown.
+namespace portablekit {
+struct AddOnDisc;
+}
+
 namespace portablekit::install {
 
 // A problem the player can act on; what() is written for them.
@@ -60,6 +64,17 @@ using ProgressFn = std::function<void(const std::string &stage, std::uint64_t do
 void install(const std::filesystem::path &image, ImageStorage storage, const std::filesystem::path &data_dir,
              const ProgressFn &progress);
 
+// Builds what an add-on disc (GameProfile::add_on_discs) adds from the
+// player's image into the installation in data_dir, replacing what an earlier
+// build of it left. Checks the image's disc id first. Nothing in data_dir
+// changes unless the build succeeds. Throws InstallError, or InstallCancelled
+// from progress.
+void add_disc(const AddOnDisc &disc, const std::filesystem::path &image, const std::filesystem::path &data_dir,
+              const ProgressFn &progress);
+// The add-on disc an image is, by the disc id in its PARAM.SFO. Throws
+// InstallError when the image is none of them, saying which it is.
+const AddOnDisc &identify_add_on(const std::filesystem::path &image);
+
 #if defined(PORTABLEKIT_ANDROID_APP)
 // Android: whether an image the player chose is a content:// document (from
 // the system's file picker or another app) rather than a file. A document can
@@ -93,6 +108,11 @@ public:
     // introduce(), or to choose_image().
     virtual bool offer_retry(const std::string &message) = 0;
     virtual void finished(const std::filesystem::path &data_dir) = 0;
+    // After the game's own disc, for each add-on disc: the player's image of
+    // it, or empty to go without. The default goes without.
+    virtual std::optional<std::filesystem::path> choose_add_on(const AddOnDisc &disc);
+    // A failed add-on build. True: choose another image; false: go without.
+    virtual bool offer_add_on_retry(const AddOnDisc &disc, const std::string &message);
 };
 
 // The whole interactive flow. True when the game is installed and can start.

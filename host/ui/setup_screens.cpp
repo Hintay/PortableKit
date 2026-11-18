@@ -71,8 +71,13 @@ public:
     void progress(const std::string &stage, std::uint64_t done, std::uint64_t total) override;
     bool offer_retry(const std::string &message) override;
     void finished(const fs::path &data_dir) override;
+    std::optional<fs::path> choose_add_on(const AddOnDisc &disc) override;
+    bool offer_add_on_retry(const AddOnDisc &disc, const std::string &message) override;
 
 private:
+    // The file browser, titled; empty when the player backs out.
+    std::optional<fs::path> browse(const std::string &title, const std::string &description);
+
     // A file dropped onto the welcome screen skips the browser.
     std::optional<fs::path> dropped_;
     fs::path data_dir_;
@@ -107,7 +112,7 @@ bool SetupScreens::introduce(const fs::path &data_dir) {
             begin_content();
             ImGui::Dummy({0.0f, font() * 0.3f});
             paragraph(i18n::format("{} plays {} from your own copy of the game. It needs the disc image of the game's "
-                                   "PSP disc, {}, as an .iso file: the PlayStation 3 release carries it.",
+                                   "PSP disc, {}, as an .iso file or a CHD made from one: the PlayStation 3 release carries it.",
                                    {portablekit::game().project_name, portablekit::game().game_title,
                                     portablekit::game().disc_id_display}));
             ImGui::Dummy({0.0f, font() * 0.4f});
@@ -135,7 +140,7 @@ bool SetupScreens::introduce(const fs::path &data_dir) {
             first = false;
 #if !defined(PORTABLEKIT_ANDROID_APP)
             ImGui::Dummy({0.0f, font() * 0.4f});
-            paragraph("You can also drop the .iso file onto this window.", colors::kTextDim);
+            paragraph("You can also drop the .iso or .chd file onto this window.", colors::kTextDim);
 #endif
             layer.set_description(i18n::format("{} ({}) is the only release supported.",
                                                {portablekit::game().game_title, portablekit::game().disc_id_display}));
@@ -176,6 +181,12 @@ std::optional<fs::path> SetupScreens::choose_image() {
 #else
 std::optional<fs::path> SetupScreens::choose_image() {
     if (dropped_) return std::exchange(dropped_, std::nullopt);
+    return browse("Choose the disc image",
+                  i18n::format("Look for the .iso or .chd image of {}. Removable drives and SD cards are listed next to Home.",
+                               {portablekit::game().disc_id_display}));
+}
+
+std::optional<fs::path> SetupScreens::browse(const std::string &title, const std::string &description) {
     Layer &layer = Layer::get();
     layer.set_interactive(true);
     FileBrowser browser(settings::current().last_folder.empty()
@@ -191,12 +202,10 @@ std::optional<fs::path> SetupScreens::choose_image() {
             const bool back = layer.take_back();
             const ImGuiKey cancel = layer.confirm_south() ? ImGuiKey_GamepadFaceRight : ImGuiKey_GamepadFaceDown;
             const bool pad_back = ImGui::IsKeyPressed(cancel, false);
-            begin_panel("##browser", "Choose the disc image", kSubtitle, false);
+            begin_panel("##browser", title, kSubtitle, false);
             begin_content();
             const FileBrowser::Result result = browser.frame(back || pad_back);
-            layer.set_description(i18n::format("Look for the .iso image of {}. Removable drives and SD cards are listed "
-                                               "next to Home.",
-                                               {portablekit::game().disc_id_display}));
+            layer.set_description(description);
             begin_footer();
             if (layer.input_device() == InputDevice::Gamepad)
                 hints({{Control::Confirm, "Open"}, {Control::Back, "Up a folder"}, {Control::Toggle, "All files"}});
@@ -398,7 +407,7 @@ bool SetupScreens::offer_retry(const std::string &message) {
             ImGui::Dummy({0.0f, font() * 0.8f});
             answer = button_pair("Choose another file", "Quit", first);
             first = false;
-            layer.set_description(i18n::format("{} supports only {}, {}, as an unmodified, uncompressed .iso image.",
+            layer.set_description(i18n::format("{} supports only {}, {}, as an unmodified .iso image or a CHD made from one.",
                                                {portablekit::game().project_name, portablekit::game().game_title,
                                                 portablekit::game().disc_id_display}));
             begin_footer();
@@ -448,6 +457,102 @@ void SetupScreens::finished(const fs::path &data_dir) {
         },
         false);
     layer.set_interactive(false);
+}
+
+std::optional<fs::path> SetupScreens::choose_add_on(const AddOnDisc &disc) {
+    Layer &layer = Layer::get();
+    // As a disc id is printed: "UCJS-10097".
+    std::string disc_id = disc.disc_ids.empty() ? std::string() : std::string(disc.disc_ids.front());
+    if (disc_id.size() > 4u && disc_id.find('-') == std::string::npos) disc_id.insert(4u, "-");
+    layer.set_interactive(true);
+    for (;;) {
+        int answer = 0;
+        bool first = true;
+        std::optional<fs::path> dropped;
+        const bool window_open = layer.run(
+            [&] {
+                if (auto file = layer.take_dropped_file()) {
+                    dropped = std::move(file);
+                    answer = 1;
+                    return false;
+                }
+                if (layer.take_back()) {
+                    answer = 2;
+                    return false;
+                }
+                begin_panel("##add_on", i18n::format("Add {}?", {i18n::tr(disc.name)}), kSubtitle, false);
+                begin_content();
+                ImGui::Dummy({0.0f, font() * 0.3f});
+                paragraph(i18n::tr(disc.description));
+                ImGui::Dummy({0.0f, font() * 0.4f});
+                paragraph("Optional. The image is only read, and nothing is downloaded.", colors::kTextDim);
+                ImGui::Dummy({0.0f, font() * 0.4f});
+                section("Disc needed");
+                ImGui::Indent(std::round(16.0f * layer.scale()));
+                paragraph(i18n::format("{} ({}), as an .iso image or a CHD", {i18n::tr(disc.name), disc_id}), colors::kTextDim);
+                ImGui::Unindent(std::round(16.0f * layer.scale()));
+                ImGui::Dummy({0.0f, font() * 0.3f});
+                section("Data folder");
+                ImGui::Indent(std::round(16.0f * layer.scale()));
+                paragraph(install::path_to_utf8(data_dir_), colors::kTextDim);
+                ImGui::Unindent(std::round(16.0f * layer.scale()));
+                ImGui::Dummy({0.0f, font() * 0.6f});
+                answer = button_pair("Choose disc image", "Skip", first);
+                first = false;
+#if !defined(PORTABLEKIT_ANDROID_APP)
+                ImGui::Dummy({0.0f, font() * 0.4f});
+                paragraph("You can also drop the .iso or .chd file onto this window.", colors::kTextDim);
+#endif
+                layer.set_description(i18n::format("You can add it later with {} --add-disc image.iso.",
+                                                   {portablekit::game().app_name}));
+                begin_footer();
+                hints({{Control::Confirm, "Select"}, {Control::Back, "Skip"}});
+                end_panel();
+                return answer == 0;
+            },
+            false);
+        if (!window_open || answer != 1) return std::nullopt;
+        if (dropped) return dropped;
+#if defined(PORTABLEKIT_ANDROID_APP)
+        // The picker gives a document, not a file this build can read in place.
+        return std::nullopt;
+#else
+        if (auto chosen = browse(i18n::format("Choose the disc image of {}", {i18n::tr(disc.name)}),
+                                 "Removable drives and SD cards are listed next to Home."))
+            return chosen;
+#endif
+    }
+}
+
+bool SetupScreens::offer_add_on_retry(const AddOnDisc &disc, const std::string &message) {
+    Layer &layer = Layer::get();
+    int answer = 0;
+    bool first = true;
+    const bool window_open = layer.run(
+        [&] {
+            if (layer.take_back()) {
+                answer = 2;
+                return false;
+            }
+            begin_panel("##add_on_error", i18n::format("{} could not be added", {i18n::tr(disc.name)}), kSubtitle, false);
+            begin_content();
+            ImGui::Dummy({0.0f, font() * 0.5f});
+            paragraph(i18n::format("The file chosen cannot be used to add {}.", {i18n::tr(disc.name)}));
+            ImGui::Dummy({0.0f, font() * 0.3f});
+            paragraph(message, colors::kTextDim);
+            ImGui::Dummy({0.0f, font() * 0.8f});
+            answer = button_pair("Choose another file", "Skip", first);
+            first = false;
+            layer.set_description(i18n::format("Skipping leaves the game as it is. You can add {} later with {} --add-disc "
+                                               "image.iso.",
+                                               {i18n::tr(disc.name), portablekit::game().app_name}));
+            begin_footer();
+            hints({{Control::Confirm, "Select"}, {Control::Back, "Skip"}});
+            end_panel();
+            return answer == 0;
+        },
+        false);
+    return window_open && answer == 1;
 }
 
 // The screen for a problem found before the game starts.

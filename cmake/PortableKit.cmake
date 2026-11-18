@@ -20,6 +20,42 @@ include_guard(GLOBAL)
 
 set(PORTABLEKIT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." CACHE INTERNAL "PortableKit source root")
 
+# Disc images in CHD format (host/kernel/disc_reader.cpp): libchdr and the
+# decoders it bundles, unmodified in third_party/libchdr. They are C, so C is
+# enabled here, beside the C++ the rest is.
+enable_language(C)
+if(NOT TARGET portablekit_chdr)
+    set(_chdr "${PORTABLEKIT_ROOT}/third_party/libchdr")
+    add_library(portablekit_chdr STATIC
+        "${_chdr}/src/libchdr_bitstream.c"
+        "${_chdr}/src/libchdr_cdrom.c"
+        "${_chdr}/src/libchdr_chd.c"
+        "${_chdr}/src/libchdr_codec_avhuff.c"
+        "${_chdr}/src/libchdr_codec_cdfl.c"
+        "${_chdr}/src/libchdr_codec_cdlz.c"
+        "${_chdr}/src/libchdr_codec_cdzl.c"
+        "${_chdr}/src/libchdr_codec_cdzs.c"
+        "${_chdr}/src/libchdr_codec_flac.c"
+        "${_chdr}/src/libchdr_codec_huff.c"
+        "${_chdr}/src/libchdr_codec_lzma.c"
+        "${_chdr}/src/libchdr_codec_zlib.c"
+        "${_chdr}/src/libchdr_codec_zstd.c"
+        "${_chdr}/src/libchdr_flac.c"
+        "${_chdr}/src/libchdr_huffman.c"
+        "${_chdr}/deps/lzma-26.02/src/LzmaDec.c"
+        "${_chdr}/deps/miniz-3.1.2/miniz.c"
+        "${_chdr}/deps/zstd-1.5.7/zstddeclib.c")
+    target_include_directories(portablekit_chdr PUBLIC "${_chdr}/include")
+    # libchdr's own defaults, and miniz cut down to the inflater it uses.
+    target_compile_definitions(portablekit_chdr PRIVATE
+        WANT_RAW_DATA_SECTOR=1 WANT_SUBCODE=1 VERIFY_BLOCK_CRC=1 LOWRAM_TARGET=0
+        MINIZ_NO_ARCHIVE_APIS MINIZ_NO_DEFLATE_APIS MINIZ_NO_STDIO MINIZ_NO_TIME
+        $<$<C_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
+    set_target_properties(portablekit_chdr PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    # Third-party code: its warnings are not this project's to fix.
+    target_compile_options(portablekit_chdr PRIVATE $<$<NOT:$<C_COMPILER_ID:MSVC>>:-w>)
+endif()
+
 # The system layer. Backend independent and always built; only the device the
 # audio sink opens and the window the renderer creates depend on SDL.
 set(PORTABLEKIT_HOST_SOURCES
@@ -54,6 +90,8 @@ set(PORTABLEKIT_HOST_SOURCES
     host/kernel/stall_watchdog.cpp
     host/kernel/load_detector.cpp
     host/kernel/iso_image.cpp
+    host/kernel/disc_patch.cpp
+    host/kernel/disc_reader.cpp
     host/hle/hle_common.cpp
     host/hle/hle_threadman.cpp
     host/hle/hle_sysmem.cpp
@@ -459,7 +497,7 @@ inline constexpr const char *kBuildLabel = \"${PORTABLEKIT_BUILD_LABEL}\";
         "${PORTABLEKIT_ROOT}/third_party"
         "${GAME_PROFILE_DIR}/host"
         "${GAME_PROFILE_DIR}/generated")
-    target_link_libraries(${target} PRIVATE psprecomp_core ${CMAKE_DL_LIBS})
+    target_link_libraries(${target} PRIVATE psprecomp_core portablekit_chdr ${CMAKE_DL_LIBS})
     _portablekit_link_hle_extensions(${target})
     if(WIN32)
         # The ad hoc client's and server's sockets, and the list of interfaces.

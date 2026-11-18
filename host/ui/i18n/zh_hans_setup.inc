@@ -4,8 +4,8 @@
 {"Setup", "初始设置"},
 {"Welcome to {}", "欢迎使用 {}"},
 {"{} plays {} from your own copy of the game. It needs the disc image of the game's "
- "PSP disc, {}, as an .iso file: the PlayStation 3 release carries it.",
- "{} 可以用你自己持有的游戏运行《{}》。它需要这款游戏 PSP 光盘（{}）的光盘镜像，即一个 .iso 文件：PlayStation 3 版中就带有这个镜像。"},
+ "PSP disc, {}, as an .iso file or a CHD made from one: the PlayStation 3 release carries it.",
+ "{} 可以用你自己持有的游戏运行《{}》。它需要这款游戏 PSP 光盘（{}）的光盘镜像，即一个 .iso 文件或由它转换的 CHD：PlayStation 3 版中就带有这个镜像。"},
 {"Choose the image next, in Android's file picker. {} copies it into its own storage (an "
  "app cannot keep reading a file elsewhere), checks that it is the right release and prepares "
  "the game from it. The copy needs as much free space as the image takes; once it is made, the "
@@ -18,13 +18,12 @@
 {"Data folder", "数据文件夹"},
 {"Choose disc image", "选择光盘镜像"},
 {"Quit", "退出"},
-{"You can also drop the .iso file onto this window.", "也可以直接把 .iso 文件拖放到此窗口中。"},
+{"You can also drop the .iso or .chd file onto this window.", "也可以直接把 .iso 或 .chd 文件拖放到此窗口中。"},
 {"{} ({}) is the only release supported.", "仅支持《{}》（{}）这一个版本。"},
 {"Select", "选择"},
 {"Choose the disc image", "选择光盘镜像"},
-{"Look for the .iso image of {}. Removable drives and SD cards are listed "
- "next to Home.",
- "请找到 {} 的 .iso 镜像。可移动驱动器和 SD 卡列在“主目录”旁边。"},
+{"Look for the .iso or .chd image of {}. Removable drives and SD cards are listed next to Home.",
+ "请找到 {} 的 .iso 或 .chd 镜像。可移动驱动器和 SD 卡列在“主目录”旁边。"},
 {"Open", "打开"},
 {"Up a folder", "上一级文件夹"},
 {"All files", "所有文件"},
@@ -52,8 +51,8 @@
 {"Cancelling removes everything this step has written so far.", "取消会删除此步骤目前已写入的所有内容。"},
 {"Not enough free space", "可用空间不足"},
 {"This file can't be used", "无法使用此文件"},
-{"{} supports only {}, {}, as an unmodified, uncompressed .iso image.",
- "{} 仅支持未经修改、未压缩的《{}》（{}）.iso 镜像。"},
+{"{} supports only {}, {}, as an unmodified .iso image or a CHD made from one.",
+ "{} 仅支持未经修改的《{}》（{}）.iso 镜像，或由它转换的 CHD。"},
 {"All set", "设置完成"},
 {"The game is ready. Later starts go straight to it.", "游戏已准备就绪。以后启动时将直接进入游戏。"},
 {"In the game, Back, the menu button at the top of the touch controls, or L3+R3 on a "
@@ -82,6 +81,21 @@
  "again.",
  "光盘镜像副本与原文件不一致。请检查磁盘后重试。"},
 {"Reading the disc image failed. Choose it again.", "读取光盘镜像失败。请重新选择。"},
+
+// setup_screens.cpp: an add-on disc after the game's own.
+{"Add {}?", "添加《{}》？"},
+{"Optional. The image is only read, and nothing is downloaded.", "可选步骤，可以跳过。镜像只会被读取，不会下载任何内容。"},
+{"Disc needed", "所需光盘"},
+{"{} ({}), as an .iso image or a CHD", "《{}》（{}）的 .iso 或 CHD 镜像"},
+{"The file chosen cannot be used to add {}.", "所选文件不能用来添加《{}》。"},
+{"Skipping leaves the game as it is. You can add {} later with {} --add-disc image.iso.",
+ "跳过不影响游戏本身。之后也可以添加《{}》：{} --add-disc 镜像.iso"},
+{"Skip", "跳过"},
+{"You can add it later with {} --add-disc image.iso.", "之后也可以用 {} --add-disc 镜像.iso 添加。"},
+{"Choose the disc image of {}", "选择《{}》的光盘镜像"},
+{"Removable drives and SD cards are listed next to Home.", "可移动驱动器和 SD 卡列在“主目录”旁边。"},
+{"{} could not be added", "无法添加《{}》"},
+{"Adding a disc", "正在添加光盘"},
 {"Writing the copy of the disc image failed. Check that the device has free space.",
  "写入光盘镜像副本失败。请检查设备是否有足够的可用空间。"},
 

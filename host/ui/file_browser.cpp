@@ -254,7 +254,7 @@ FileBrowser::Result FileBrowser::frame(bool back) {
         // Static: SDL reads the filters until the dialog closes. The names
         // are set again each time, in the language in use.
         static SDL_DialogFileFilter kFilters[2];
-        kFilters[0] = {i18n::tr("Disc images (*.iso)"), "iso"};
+        kFilters[0] = {i18n::tr("Disc images (*.iso, *.chd)"), "iso;chd"};
         kFilters[1] = {i18n::tr("All files"), "*"};
         const bool folders = !options_.choose_folder.empty();
         auto *state = new std::shared_ptr<SystemDialog>(dialog_);
@@ -309,7 +309,8 @@ FileBrowser::Result FileBrowser::frame(bool back) {
             focus_first_ = false;
         }
         ImGui::PushID(static_cast<int>(i));
-        const bool iso = !entry.directory && lower(install::path_to_utf8(entry.path.extension())) == ".iso";
+        const std::string extension = lower(install::path_to_utf8(entry.path.extension()));
+        const bool iso = !entry.directory && (extension == ".iso" || extension == ".chd");
         const ListIcon icon = entry.directory ? ListIcon::Folder : iso ? ListIcon::Disc : ListIcon::File;
         if (list_row("##entry", entry.name, entry.directory ? "" : human_size(entry.size), icon, entry.choosable)) activated = i;
         ImGui::PopID();

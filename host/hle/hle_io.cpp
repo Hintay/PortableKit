@@ -7,6 +7,7 @@
 #include "install/user_data.hpp"
 #include "kernel/fast_loading.hpp"
 #include "kernel/load_trace.hpp"
+#include "kernel/disc_patch.hpp"
 #include "kernel/iso_image.hpp"
 
 #include "psprecomp/common.hpp"
@@ -19,6 +20,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -118,6 +120,8 @@ struct DiscReadAhead {
     std::uint32_t sectors{};
 };
 
+struct DiscOverlay;
+
 struct IoState {
     std::unique_ptr<IsoImage> disc;
     std::filesystem::path memory_stick;
@@ -128,6 +132,8 @@ struct IoState {
     // sceIoChdir's directory ("device:/path"), which a path without a device
     // is relative to; empty until a game sets one, and then the disc's root.
     std::string current_directory;
+    // The disc overlay (see DiscOverlay below), by lower-case disc path.
+    std::map<std::string, std::shared_ptr<const DiscOverlay>> overlay;
 };
 
 IoState &io() {
@@ -222,6 +228,152 @@ bool trace_io() {
     return enabled;
 }
 
+// The disc overlay: files in a host folder that the game reads in place of
+// files on the disc, so a modification needs no rebuilt image. The folder
+// mirrors the disc's tree (PSP_GAME/USRDIR/..., matched without regard to
+// case), and each file in it is one of two things:
+//
+//   <name>          the whole file, read instead of the disc's;
+//   <name>.pkpatch  changes to the disc's file (kernel/disc_patch.hpp). It
+//                   applies only to the file it was made from: one made from
+//                   another edition of the disc is left out, with a warning.
+//
+// Checking a patch hashes the disc's file; the result is remembered in the
+// folder's .verified, against the image's size and time and the patch's, so
+// it happens once per image. Only files opened by name are overlaid: raw
+// sector reads (the device itself, "sce_lbn" paths) still see the disc as it
+// is. NO_DISC_OVERLAY turns the overlay off.
+struct DiscOverlay {
+    std::filesystem::path replacement;  // a whole file, or empty for a patch
+    std::uint64_t size{};
+    disc_patch::Patch patch;
+};
+
+std::string overlay_key(std::string path) {
+    std::transform(path.begin(), path.end(), path.begin(), [](unsigned char c) { return std::tolower(c); });
+    return path;
+}
+
+std::string file_stamp(const std::filesystem::path &path) {
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec) return {};
+    const auto time = std::filesystem::last_write_time(path, ec);
+    if (ec) return {};
+    return std::to_string(size) + ":" + std::to_string(static_cast<long long>(time.time_since_epoch().count()));
+}
+
+// Whether a patch was made from the disc's file as it is in this image.
+bool patch_matches_disc(const std::string &name, const disc_patch::Patch &patch, const IsoImage::Entry &entry,
+                        const std::string &stamp, std::map<std::string, std::string> &verified, bool &changed) {
+    if (entry.size != patch.base_size) return false;
+    if (const auto found = verified.find(name); found != verified.end() && found->second == stamp) return true;
+    const std::uint64_t start = static_cast<std::uint64_t>(entry.lba) * IsoImage::kSectorSize;
+    const std::string hash = disc_patch::hash_base(entry.size, [start](std::uint64_t at, std::uint8_t *out, std::size_t n) {
+        return io().disc->read(start + at, std::span<std::uint8_t>(out, n));
+    });
+    if (hash != patch.base_sha256) return false;
+    verified[name] = stamp;
+    changed = true;
+    return true;
+}
+
+void load_disc_overlay(const std::filesystem::path &folder, const std::filesystem::path &disc_image) {
+    io().overlay.clear();
+    std::error_code ec;
+    if (folder.empty() || !std::filesystem::is_directory(folder, ec)) return;
+    if (portablekit::env("NO_DISC_OVERLAY") != nullptr) {
+        std::cerr << "[io] disc overlay off (NO_DISC_OVERLAY)\n";
+        return;
+    }
+    const std::filesystem::path verified_file = folder / ".verified";
+    std::map<std::string, std::string> verified;
+    {
+        std::ifstream in(verified_file);
+        std::string line;
+        while (std::getline(in, line))
+            if (const auto tab = line.find('\t'); tab != std::string::npos)
+                verified[line.substr(0, tab)] = line.substr(tab + 1u);
+    }
+    bool changed = false;
+    const std::string image_stamp = file_stamp(disc_image);
+    const std::string_view suffix = disc_patch::kSuffix;
+    for (auto it = std::filesystem::recursive_directory_iterator(folder, ec);
+         !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+        std::error_code file_ec;
+        if (!it->is_regular_file(file_ec)) continue;
+        std::string name = install::path_to_utf8(std::filesystem::relative(it->path(), folder, file_ec));
+        std::replace(name.begin(), name.end(), '\\', '/');
+        if (name.empty() || name.front() == '.' || name.find("/.") != std::string::npos) continue;
+        DiscOverlay overlay;
+        if (name.size() > suffix.size() && overlay_key(name).ends_with(suffix)) {
+            name.resize(name.size() - suffix.size());
+            auto patch = disc_patch::read(it->path());
+            const auto entry = io().disc->find(name);
+            if (!patch || !entry || entry->directory) {
+                std::cerr << "[io] disc overlay: " << name << suffix
+                          << (patch ? " names no file on the disc, left out\n" : " is not a valid patch, left out\n");
+                continue;
+            }
+            const std::string stamp = image_stamp + " " + file_stamp(it->path());
+            if (!patch_matches_disc(overlay_key(name), *patch, *entry, stamp, verified, changed)) {
+                std::cerr << "[io] disc overlay: " << name << suffix
+                          << " was made from another edition of this file, left out\n";
+                continue;
+            }
+            overlay.size = patch->size;
+            overlay.patch = std::move(*patch);
+        } else {
+            overlay.replacement = it->path();
+            overlay.size = it->file_size(file_ec);
+        }
+        if (trace_io())
+            std::cerr << "[io] disc overlay: " << name << (overlay.replacement.empty() ? " (patch, " : " (file, ")
+                      << overlay.size << " bytes)\n";
+        io().overlay[overlay_key(name)] = std::make_shared<const DiscOverlay>(std::move(overlay));
+    }
+    if (changed) {
+        std::ofstream out(verified_file, std::ios::trunc);
+        for (const auto &[name, stamp] : verified) out << name << '\t' << stamp << '\n';
+    }
+    if (!io().overlay.empty()) std::cerr << "[io] disc overlay: " << io().overlay.size() << " file(s)\n";
+}
+
+std::shared_ptr<const DiscOverlay> find_disc_overlay(const std::string &disc_path) {
+    if (io().overlay.empty()) return nullptr;
+    const auto found = io().overlay.find(overlay_key(disc_path));
+    return found == io().overlay.end() ? nullptr : found->second;
+}
+
+// What a game reads from a disc file the overlay covers.
+class DiscOverlayFilter final : public hle_extension::FileFilter {
+public:
+    DiscOverlayFilter(std::uint32_t fd, std::shared_ptr<const DiscOverlay> overlay)
+        : fd_(fd), overlay_(std::move(overlay)) {}
+    [[nodiscard]] std::uint64_t size() const override { return overlay_->size; }
+    std::size_t read(std::uint64_t offset, std::uint8_t *destination, std::size_t length) override {
+        if (overlay_->replacement.empty()) {
+            const std::uint32_t fd = fd_;
+            return disc_patch::read_patched(overlay_->patch, offset, destination, length,
+                                            [fd](std::uint64_t at, std::uint8_t *out, std::size_t n) {
+                                                return read_open_file(fd, at, out, n);
+                                            });
+        }
+        if (offset >= overlay_->size) return 0u;
+        length = static_cast<std::size_t>(std::min<std::uint64_t>(length, overlay_->size - offset));
+        if (!file_) file_ = std::make_unique<std::ifstream>(overlay_->replacement, std::ios::binary);
+        file_->clear();
+        file_->seekg(static_cast<std::streamoff>(offset));
+        file_->read(reinterpret_cast<char *>(destination), static_cast<std::streamsize>(length));
+        return static_cast<std::size_t>(file_->gcount());
+    }
+
+private:
+    std::uint32_t fd_;
+    std::shared_ptr<const DiscOverlay> overlay_;
+    std::unique_ptr<std::ifstream> file_;
+};
+
 std::int64_t open_file(const std::string &full_path, std::uint32_t flags) {
     const SplitPath split = split_path(full_path);
     OpenFile file;
@@ -270,8 +422,13 @@ std::int64_t open_file(const std::string &full_path, std::uint32_t flags) {
     } else {
         return static_cast<std::int32_t>(io_error::kDeviceNotFound);
     }
+    const bool overlaid_kind = file.kind == OpenFile::Kind::Disc && !file.sector_units;
     const std::uint32_t fd = io().next_fd++;
     io().files.emplace(fd, std::move(file));
+    if (overlaid_kind && !parse_lbn_path(split.path)) {
+        if (auto overlay = find_disc_overlay(split.path))
+            set_open_file_filter(fd, std::make_shared<DiscOverlayFilter>(fd, std::move(overlay)));
+    }
     return fd;
 }
 
@@ -739,9 +896,11 @@ void register_async_io(HleRegistrar &hle) {
 
 } // namespace
 
-void register_io(HleRegistrar &hle, const std::filesystem::path &disc_image, const std::filesystem::path &memory_stick) {
+void register_io(HleRegistrar &hle, const std::filesystem::path &disc_image, const std::filesystem::path &memory_stick,
+                 const std::filesystem::path &disc_overlay) {
     if (!disc_image.empty()) io().disc = std::make_unique<IsoImage>(disc_image);
     io().memory_stick = memory_stick;
+    if (io().disc) load_disc_overlay(disc_overlay, disc_image);
 
     hle.add("IoFileMgrForUser", "sceIoOpen", [](Runtime &rt, AllegrexContext &ctx) {
         const std::string path = read_cstring(rt.memory(), arg(ctx, 0), 256u);
@@ -798,7 +957,9 @@ void register_io(HleRegistrar &hle, const std::filesystem::path &disc_image, con
         std::uint32_t result = io_error::kFileNotFound;
         if (split.device == Device::Disc && io().disc) {
             if (const auto entry = io().disc->find(split.path)) {
-                write_stat(rt.memory(), arg(ctx, 1), entry->directory, entry->size, entry->lba);
+                const auto overlay = entry->directory ? nullptr : find_disc_overlay(split.path);
+                write_stat(rt.memory(), arg(ctx, 1), entry->directory, overlay ? overlay->size : entry->size,
+                           entry->lba);
                 result = 0u;
             }
         } else if (split.device == Device::MemoryStick) {
@@ -844,8 +1005,11 @@ void register_io(HleRegistrar &hle, const std::filesystem::path &disc_image, con
         }
         if (split.device == Device::Disc) {
             for (const std::string &name : io().disc->list(split.path)) {
-                const auto entry = io().disc->find(root ? name : split.path + "/" + name);
-                if (entry) file.entries.push_back({name, entry->directory, entry->size, entry->lba});
+                const std::string child = root ? name : split.path + "/" + name;
+                const auto entry = io().disc->find(child);
+                if (!entry) continue;
+                const auto overlay = entry->directory ? nullptr : find_disc_overlay(child);
+                file.entries.push_back({name, entry->directory, overlay ? overlay->size : entry->size, entry->lba});
             }
         } else {
             std::error_code ec;

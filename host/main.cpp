@@ -98,11 +98,14 @@ std::string usage() {
     const std::string app = portablekit::game().app_name;
     return "usage: " + app + " [game_dir]\n"
            "       " + app + " --install [image.iso [--in-place]]\n"
+           "       " + app + " --add-disc image.iso\n"
            "       " + app + " --adhoc-server [port]\n"
-           "  game_dir        play from a directory holding EBOOT.ELF, disc.iso and ms0/\n"
+           "  game_dir        play from a directory holding EBOOT.ELF, disc.iso (or disc.chd) and ms0/\n"
            "  --install       run the setup again on screen, then play\n"
            "  --install image set up from image.iso without the setup screens, then exit\n"
            "  --in-place      use the image where it is instead of copying it\n"
+           "  --add-disc image  add another disc's content (such as an earlier season's\n"
+           "                  episodes) to the installed game, then exit\n"
            "  --adhoc-server  run only the ad hoc server that Network > Host a session\n"
            "                  starts, on TCP port (default 27312) and the next one up,\n"
            "                  announced on the local network, until Ctrl+C\n";
@@ -113,6 +116,7 @@ struct Options {
     bool install = false;
     std::optional<std::filesystem::path> install_image;
     bool in_place = false;
+    std::optional<std::filesystem::path> add_disc;
 };
 
 class UsageError final : public std::runtime_error {
@@ -127,6 +131,10 @@ Options parse_options(int argc, char **argv) {
         if (arg == "--help" || arg == "-h") throw UsageError("");
         if (arg == "--install") options.install = true;
         else if (arg == "--in-place") options.in_place = true;
+        else if (arg == "--add-disc") {
+            if (i + 1 >= argc) throw UsageError("--add-disc needs an image");
+            options.add_disc = portablekit::install::path_from_utf8(argv[++i]);
+        }
         else if (!arg.empty() && arg[0] == '-') throw UsageError("unknown option " + arg);
         else if (options.install && !options.install_image) options.install_image = portablekit::install::path_from_utf8(arg);
         else if (!options.install && !options.game_dir) options.game_dir = std::filesystem::path(arg);
@@ -141,6 +149,7 @@ struct GameFiles {
     std::filesystem::path executable;
     std::filesystem::path disc_image; // empty: disc0: is unavailable
     std::filesystem::path memory_stick;
+    std::filesystem::path disc_overlay;
 };
 
 // The layout a game_dir has always had; the profile's game directory by default.
@@ -148,7 +157,10 @@ GameFiles files_in_game_directory(const std::filesystem::path &game_dir) {
     GameFiles files;
     files.executable = game_dir / "EBOOT.ELF";
     files.disc_image = game_dir / "disc.iso";
+    if (!std::filesystem::exists(files.disc_image) && std::filesystem::exists(game_dir / "disc.chd"))
+        files.disc_image = game_dir / "disc.chd";
     files.memory_stick = portablekit::memory_stick_directory(game_dir);
+    files.disc_overlay = portablekit::disc_overlay_directory(game_dir);
     if (!std::filesystem::exists(files.disc_image)) {
         std::cerr << "warning: " << files.disc_image.string() << " not found; disc0: is unavailable\n";
         files.disc_image.clear();
@@ -159,7 +171,8 @@ GameFiles files_in_game_directory(const std::filesystem::path &game_dir) {
 bool has_game_data(const std::filesystem::path &game_dir) {
     std::error_code ec;
     return std::filesystem::exists(std::filesystem::symlink_status(game_dir / "EBOOT.ELF", ec)) ||
-           std::filesystem::exists(std::filesystem::symlink_status(game_dir / "disc.iso", ec));
+           std::filesystem::exists(std::filesystem::symlink_status(game_dir / "disc.iso", ec)) ||
+           std::filesystem::exists(std::filesystem::symlink_status(game_dir / "disc.chd", ec));
 }
 
 // the profile's game directory in the checkout this was built from, for developer
@@ -212,6 +225,7 @@ std::optional<GameFiles> locate_game(const Options &options) {
                     files.executable = installed->executable;
                     files.disc_image = installed->disc_image;
                     files.memory_stick = installed_memory_stick(data_dir, checkout_game_dir);
+                    files.disc_overlay = portablekit::disc_overlay_directory(data_dir);
                     return files;
                 }
                 const std::string where = install::path_to_utf8(installed->disc_image);
@@ -257,6 +271,20 @@ int install_from_command_line(const Options &options) {
         return 1;
     }
     std::cout << "Game data is ready in " << install::path_to_utf8(data_dir) << ". Start " << portablekit::game().app_name << " to play.\n";
+    return 0;
+}
+
+int add_disc_from_command_line(const Options &options) {
+    namespace install = portablekit::install;
+    const std::filesystem::path data_dir = install::user_data_directory();
+    try {
+        const portablekit::AddOnDisc &disc = install::identify_add_on(*options.add_disc);
+        install::add_disc(disc, *options.add_disc, data_dir, install::print_progress);
+        std::cout << disc.name << " is added to the game in " << install::path_to_utf8(data_dir) << ".\n";
+    } catch (const install::InstallError &e) {
+        std::cerr << "Adding the disc failed: " << e.what() << "\n";
+        return 1;
+    }
     return 0;
 }
 
@@ -342,6 +370,7 @@ int main(int argc, char **argv) {
             return 2;
         }
         if (options.install_image) return install_from_command_line(options);
+        if (options.add_disc) return add_disc_from_command_line(options);
 #if defined(PORTABLEKIT_ANDROID_APP)
         {
             // "Set up game data again" from the menu, left for this start.
@@ -358,6 +387,7 @@ int main(int argc, char **argv) {
         portablekit::ProfilePaths paths;
         paths.disc_image = files->disc_image;
         paths.memory_stick = files->memory_stick;
+        paths.disc_overlay = files->disc_overlay;
         if (!std::filesystem::is_regular_file(executable))
             throw psprecomp::Error("Missing " + executable.string() + " (run scripts/prepare_game.sh)");
 

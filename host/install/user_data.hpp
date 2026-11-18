@@ -10,12 +10,15 @@ namespace portablekit::install {
 // The per-user data directory holds what the installer sets up:
 //
 //   EBOOT.ELF      the executable prepared from the player's disc image
-//   disc.iso       the copied disc image (absent when the image is used in place)
+//   disc.iso       the copied disc image (absent when the image is used in place),
+//                  or disc.chd when the player's image is a CHD
 //   settings.ini   where the disc image is, and the player's settings
 //
 // Save data is not here yet: ms0 stays where the host has always kept it.
 inline constexpr const char *kExecutableFile = "EBOOT.ELF";
 inline constexpr const char *kCopiedImageFile = "disc.iso";
+// The copy when the player's image is a CHD, kept compressed.
+inline constexpr const char *kCopiedChdFile = "disc.chd";
 // Android: asks the next start to run the setup, as --install does elsewhere.
 inline constexpr const char *kSetupMarkerFile = "setup-requested";
 inline constexpr const char *kSettingsFile = "settings.ini";

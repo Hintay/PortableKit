@@ -107,7 +107,7 @@ public:
             std::optional<std::filesystem::path> path;
             std::string error;
         } pick;
-        static const SDL_DialogFileFilter filters[] = {{"Disc images (*.iso)", "iso"}, {"All files", "*"}};
+        static const SDL_DialogFileFilter filters[] = {{"Disc images (*.iso, *.chd)", "iso;chd"}, {"All files", "*"}};
         const auto callback = [](void *userdata, const char *const *files, int) {
             auto &state = *static_cast<Pick *>(userdata);
             {

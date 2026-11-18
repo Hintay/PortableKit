@@ -130,7 +130,7 @@
 {".iso images", "光盘镜像（.iso）"},
 {"No folders or disc images here.", "这里没有文件夹或光盘镜像。"},
 {"System dialog…", "系统对话框…"},
-{"Disc images (*.iso)", "光盘镜像（*.iso）"},
+{"Disc images (*.iso, *.chd)", "光盘镜像（*.iso、*.chd）"},
 {"All files", "所有文件"},
 {"Parent folder", "上一级"},
 {"{} other file is hidden; only {} are listed.", "另有 {} 个文件已隐藏，只列出了{}。"},

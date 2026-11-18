@@ -73,6 +73,8 @@ std::uint32_t load_image_end(const psprecomp::Elf32Image &elf) {
 
 std::filesystem::path memory_stick_directory(const std::filesystem::path &game_dir) { return game_dir / "ms0"; }
 
+std::filesystem::path disc_overlay_directory(const std::filesystem::path &game_dir) { return game_dir / "disc_overlay"; }
+
 void install_system(Runtime &runtime, const psprecomp::Elf32Image &elf, const ProfilePaths &paths) {
     const std::string_view boot_path = game().boot_path;
     const auto module = elf.find_module_info(runtime.memory(), game().load_base);
@@ -84,7 +86,7 @@ void install_system(Runtime &runtime, const psprecomp::Elf32Image &elf, const Pr
     HleRegistrar hle(runtime);
     register_threadman(hle);
     register_sysmem(hle);
-    register_io(hle, paths.disc_image, paths.memory_stick);
+    register_io(hle, paths.disc_image, paths.memory_stick, paths.disc_overlay);
     register_system(hle);
     register_media(hle);
     register_atrac(hle);

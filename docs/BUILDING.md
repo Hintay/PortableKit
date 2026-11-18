@@ -56,7 +56,7 @@ Measured on an Apple M1 with 8 GB, from a fresh clone with an empty compiler cac
 
 - **Host-only changes rebuild in seconds.** Changes under `include/psprecomp/` rebuild everything, including every overlay, so avoid them unless they are the point.
 - **Don't rebuild the corpus per checkout.** Copy `generated/` from a checkout that has it with a plain `cp -R`, not a copy that keeps old timestamps. Point at an existing overlay build with `<PREFIX>_OVERLAY_DIR`.
-- **Don't re-prepare the game per checkout.** `<PREFIX>_GAME_DIR` points at a directory that already holds `EBOOT.ELF`, `disc.iso` and `ms0/`.
+- **Don't re-prepare the game per checkout.** `<PREFIX>_GAME_DIR` points at a directory that already holds `EBOOT.ELF`, `disc.iso` (or `disc.chd`) and `ms0/`, and optionally `disc_overlay/`.
 - **Build with `cmake --build`, never `ninja` directly.** `cmake --build` holds the per-directory lock and repairs the Ninja log first; see [BUILD_SYSTEM.md](BUILD_SYSTEM.md). Run one build per build directory, and never delete `.ninja_deps` or `.ninja_log`.
 
 ## Options

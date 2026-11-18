@@ -1,6 +1,7 @@
 #include "psprecomp/sha256.hpp"
 #include "psprecomp/common.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <fstream>
@@ -29,6 +30,38 @@ void transform(std::array<std::uint32_t,8> &h, const std::uint8_t *block) {
     h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh;
 }
 }
+Sha256::Sha256()
+    : h_{0x6a09e667u,0xbb67ae85u,0x3c6ef372u,0xa54ff53au,0x510e527fu,0x9b05688cu,0x1f83d9abu,0x5be0cd19u} {}
+
+void Sha256::update(std::span<const std::uint8_t> bytes) {
+    length_ += bytes.size();
+    std::size_t i = 0;
+    if (filled_ != 0u) {
+        const std::size_t take = std::min<std::size_t>(64u - filled_, bytes.size());
+        std::copy_n(bytes.data(), take, block_.data() + filled_);
+        filled_ += take;
+        i = take;
+        if (filled_ < 64u) return;
+        transform(h_, block_.data());
+        filled_ = 0u;
+    }
+    for (; i + 64u <= bytes.size(); i += 64u) transform(h_, bytes.data() + i);
+    std::copy(bytes.begin() + static_cast<std::ptrdiff_t>(i), bytes.end(), block_.begin());
+    filled_ = bytes.size() - i;
+}
+
+std::string Sha256::finish() {
+    const std::uint64_t bits = length_ * 8u;
+    std::array<std::uint8_t, 72> tail{};
+    tail[0] = 0x80u;
+    const std::size_t pad = (filled_ < 56u ? 56u : 120u) - filled_;
+    for (int i = 0; i < 8; ++i) tail[pad + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(bits >> ((7 - i) * 8));
+    const std::uint64_t saved = length_;
+    update(std::span<const std::uint8_t>(tail.data(), pad + 8u));
+    length_ = saved;
+    std::ostringstream out; out<<std::hex<<std::setfill('0'); for(auto v:h_) out<<std::setw(8)<<v; return out.str();
+}
+
 std::string sha256_bytes(std::span<const std::uint8_t> bytes) {
     std::vector<std::uint8_t> data(bytes.begin(), bytes.end());
     const std::uint64_t bits=static_cast<std::uint64_t>(data.size())*8u; data.push_back(0x80u); while((data.size()%64u)!=56u) data.push_back(0u);
