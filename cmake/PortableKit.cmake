@@ -99,6 +99,8 @@ set(PORTABLEKIT_RENDERER_SOURCES
     host/gpu/vulkan_renderer.cpp
     host/ui/file_browser.cpp
     host/ui/font_menu.cpp
+    host/ui/i18n.cpp
+    host/ui/i18n/zh_hans.cpp
     host/input/motion.cpp
     host/input/steam_deck_imu.cpp
     host/ui/input_script.cpp

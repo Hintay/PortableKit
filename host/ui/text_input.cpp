@@ -1,5 +1,6 @@
 #include "ui/text_input.hpp"
 
+#include "ui/i18n.hpp"
 #include "ui/layer.hpp"
 #include "ui/widgets.hpp"
 
@@ -439,7 +440,8 @@ void draw_grid(ImDrawList *draw, const std::vector<Row> &rows, float width) {
                 label = encode_utf8(std::u32string(1, ch));
                 enabled = allowed(ch);
             } else {
-                label = action_label(key.kind);
+                // "abc", "#+=" and "Steam" are not in any catalogue and stay as they are.
+                label = i18n::tr(action_label(key.kind));
                 if (key.kind == KeyKind::Space) enabled = allowed(U' ');
             }
             const bool lit = (key.kind == KeyKind::Shift && k.shift != ShiftState::Off) ||
@@ -534,7 +536,7 @@ void text_input_frame() {
 
     ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.3f);
     ImGui::PushStyleColor(ImGuiCol_Text, colors::kAccentBright);
-    ImGui::TextUnformatted(k.request.title.c_str());
+    ImGui::TextUnformatted(i18n::tr(k.request.title).c_str());
     ImGui::PopStyleColor();
     ImGui::PopFont();
     const ImVec2 line = ImGui::GetCursorScreenPos();

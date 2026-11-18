@@ -1,5 +1,6 @@
 #include "ui/font_menu.hpp"
 
+#include "ui/i18n.hpp"
 #include "ui/layer.hpp"
 #include "ui/widgets.hpp"
 
@@ -43,7 +44,7 @@ RowOptions options_for(const char *key, std::string description) {
     options.description = std::move(description);
     if (const std::string variable = settings::overridden_by(key); !variable.empty()) {
         options.disabled = true;
-        options.note = "Set by " + variable;
+        options.note = i18n::format("Set by {}", {variable});
     }
     return options;
 }
@@ -195,9 +196,10 @@ void font_rows() {
     fonts::start_catalog();
     section("Text");
     {
-        RowOptions o = options_for("text.font", "The font the game's text is drawn with. Characters it lacks, such "
-                                                "as Japanese in a Latin font, come from the default: " +
-                                                    fonts::fallback_name() + ".");
+        RowOptions o = options_for("text.font", i18n::format("The font the game's text is drawn with. Characters "
+                                                             "it lacks, such as Japanese in a Latin font, come from "
+                                                             "the default: {}.",
+                                                             {fonts::fallback_name()}));
         if (!fonts::problem().empty()) o.description += "\n" + fonts::problem();
         if (focus_font_row) {
             focus_next_row();
@@ -223,8 +225,9 @@ void font_rows() {
     }
     draw_preview();
     if (button_row("Open the fonts folder",
-                   {false, {}, "Fonts put in this folder (.ttf, .otf, .ttc) are listed first under Font: " +
-                                   fonts::user_font_folder()})) {
+                   {false, {},
+                    i18n::format("Fonts put in this folder (.ttf, .otf, .ttc) are listed first under Font: {}",
+                                 {fonts::user_font_folder()})})) {
         const std::string folder = fonts::user_font_folder();
         std::error_code ec;
         std::filesystem::create_directories(install::path_from_utf8(folder), ec);
@@ -265,13 +268,13 @@ bool font_list(bool back) {
             picked = true;
         }
     };
-    entry("##default", "Default: " + fonts::fallback_name(), "Japanese", "");
+    entry("##default", i18n::format("Default: {}", {fonts::fallback_name()}), i18n::tr("Japanese"), "");
     for (std::size_t i = 0; i < choices.size(); ++i) {
         const fonts::FontChoice &choice = choices[i];
         ImGui::PushID(static_cast<int>(i));
-        const std::string detail = choice.user_folder ? (choice.japanese ? "Your font, Japanese" : "Your font")
-                                   : choice.japanese  ? "Japanese"
-                                                      : "Latin";
+        const std::string detail = i18n::tr(choice.user_folder ? (choice.japanese ? "Your font, Japanese" : "Your font")
+                                            : choice.japanese  ? "Japanese"
+                                                               : "Latin");
         entry("##font", choice.name, detail, choice.value);
         ImGui::PopID();
     }

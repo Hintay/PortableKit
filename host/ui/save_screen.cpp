@@ -2,6 +2,7 @@
 #include "ui/save_screen.hpp"
 
 #include "ui/file_browser.hpp"
+#include "ui/i18n.hpp"
 #include "ui/layer.hpp"
 #include "ui/widgets.hpp"
 
@@ -123,16 +124,23 @@ void sandbox_note() {
     ImGui::Unindent(px(16.0f));
 }
 
+// A save folder's description from the game's profile, in the interface's language.
+std::string save_label(const std::string &name) { return i18n::tr(sd::save_label(name)); }
+
 std::string names_text(const std::vector<std::string> &names) {
     std::string text;
-    for (std::size_t i = 0; i < names.size(); ++i)
-        text += (i == 0 ? "" : i + 1 == names.size() ? " and " : ", ") + sd::save_label(names[i]);
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        const std::string label = save_label(names[i]);
+        if (i == 0) text = label;
+        else if (i + 1 == names.size()) text = i18n::format("{} and {}", {text, label});
+        else text = i18n::format("{}, {}", {text, label});
+    }
     return text;
 }
 
 std::string describe(const sd::FolderSummary &summary) {
     if (!summary.exists) return "None";
-    return "Saved " + sd::timestamp_for_display(summary.modified) + ", " + human_size(summary.bytes);
+    return i18n::format("Saved {}, {}", {sd::timestamp_for_display(summary.modified), human_size(summary.bytes)});
 }
 
 void go(Stage stage) {
@@ -378,32 +386,33 @@ void review_screen(bool back) {
     ImGui::Indent(px(16.0f));
 #if defined(PORTABLEKIT_ANDROID_APP)
     // The picked folder, not the local copy it was checked in.
-    paragraph("From " + utf8(s.picked.filename()), colors::kTextDim);
+    paragraph(i18n::format("From {}", {utf8(s.picked.filename())}), colors::kTextDim);
 #else
-    paragraph("From " + utf8(s.picked), colors::kTextDim);
+    paragraph(i18n::format("From {}", {utf8(s.picked)}), colors::kTextDim);
 #endif
     if (s.found.empty())
-        paragraph(std::string("No saves of ") + portablekit::game().game_title +
-                      " were found in this folder. Choose a save folder such as "
-                  "a save folder, or the PSP/SAVEDATA folder that holds it.",
+        paragraph(i18n::format("No saves of {} were found in this folder. Choose a save folder such as "
+                               "a save folder, or the PSP/SAVEDATA folder that holds it.",
+                               {portablekit::game().game_title}),
                   colors::kDanger);
     if (s.other_games > 0)
-        paragraph(std::to_string(s.other_games) + (s.other_games == 1 ? " save belongs" : " saves belong") +
-                      " to other games and " + (s.other_games == 1 ? "is" : "are") + " left out.",
+        paragraph(i18n::format(s.other_games == 1 ? "{} save belongs to other games and is left out."
+                                                  : "{} saves belong to other games and are left out.",
+                               {std::to_string(s.other_games)}),
                   colors::kTextDim);
     ImGui::Unindent(px(16.0f));
 
     for (std::size_t i = 0; i < s.found.size(); ++i) {
         const Found &f = s.found[i];
         ImGui::PushID(static_cast<int>(i));
-        section((sd::save_label(f.check.name) + " (" + f.check.name + ")").c_str());
+        section(i18n::format("{} ({})", {save_label(f.check.name), f.check.name}).c_str());
         if (i == 0) focus_first();
         info_row("Save to import", describe(f.incoming));
         if (f.check.ok()) {
             info_row("Current save", describe(f.current));
         } else {
             ImGui::Indent(px(16.0f));
-            paragraph("Cannot be imported: " + f.check.problem, colors::kDanger);
+            paragraph(i18n::format("Cannot be imported: {}", {f.check.problem}), colors::kDanger);
             ImGui::Unindent(px(16.0f));
         }
         ImGui::PopID();
@@ -414,12 +423,16 @@ void review_screen(bool back) {
     if (importable > 0) {
         const std::string label =
             replacing > 0 ? "Replace and import" : importable == 1 ? "Import this save" : "Import these saves";
-        std::string description = "Copies the save" + std::string(importable == 1 ? "" : "s") + " into " +
-                                  portablekit::game().project_name + ".";
-        if (replacing > 0)
-            description += " The save" + std::string(replacing == 1 ? " it replaces is" : "s they replace are") +
-                           " not deleted: " + (replacing == 1 ? "it moves" : "they move") +
-                           " to the saves folder's .backup folder.";
+        // One sentence per case, so a translation sees each one whole.
+        const char *text =
+            replacing == 0   ? (importable == 1 ? "Copies the save into {}." : "Copies the saves into {}.")
+            : importable == 1 ? "Copies the save into {}. The save it replaces is not deleted: it moves to the saves "
+                                "folder's .backup folder."
+            : replacing == 1  ? "Copies the saves into {}. The save it replaces is not deleted: it moves to the saves "
+                                "folder's .backup folder."
+                              : "Copies the saves into {}. The saves they replace are not deleted: they move to the "
+                                "saves folder's .backup folder.";
+        const std::string description = i18n::format(text, {portablekit::game().project_name});
         if (button_row(label.c_str(), {false, {}, description}, replacing > 0 ? colors::kAccentBright : colors::kText))
             run_import();
     }
@@ -441,13 +454,13 @@ void imported_screen(bool back) {
         backups = backups || !item.result.backup.empty();
         ImGui::PushID(static_cast<int>(i));
         if (i == 0) focus_first();
-        info_row(sd::save_label(item.name).c_str(),
+        info_row(save_label(item.name).c_str(),
                  item.result.ok ? (item.result.backup.empty() ? "Imported" : "Imported; the old save was kept")
-                                : "Not imported: " + item.result.error);
+                                : i18n::format("Not imported: {}", {item.result.error}));
         ImGui::PopID();
     }
     ImGui::Indent(px(16.0f));
-    if (backups) paragraph("The replaced saves are in " + utf8(s.backup_dir) + ".", colors::kTextDim);
+    if (backups) paragraph(i18n::format("The replaced saves are in {}.", {utf8(s.backup_dir)}), colors::kTextDim);
     if (any)
         paragraph("The game reads its saves at the title screen. Restart now to load the imported save; progress "
                   "since your last save is lost. If you keep playing instead, do not save before you restart: "
@@ -473,12 +486,13 @@ void exported_screen(bool back) {
     if (s.exported.ok) {
         std::string names;
         for (const std::string &name : s.exported.exported)
-            names += (names.empty() ? "" : ", ") + sd::save_label(name);
+            names = names.empty() ? save_label(name) : i18n::format("{}, {}", {names, save_label(name)});
         info_row("Exported", names);
         if (!s.exported.encrypted.empty()) {
             std::string encrypted;
             for (const std::string &name : s.exported.encrypted)
-                encrypted += (encrypted.empty() ? "" : ", ") + sd::save_label(name);
+                encrypted =
+                    encrypted.empty() ? save_label(name) : i18n::format("{}, {}", {encrypted, save_label(name)});
             info_row("Encrypted for a PSP", encrypted);
         }
         info_row("To", utf8(s.exported.folder));
@@ -506,7 +520,8 @@ void backup_screen(bool back) {
     section("Back up saves");
     ImGui::Indent(px(16.0f));
     paragraph(names.empty() ? "There is no save to back up yet."
-                            : "Copies " + names_text(names) + " to a folder. To restore a backup, import it.",
+                            : i18n::format("Copies {} to a folder. To restore a backup, import it.",
+                                           {names_text(names)}),
               names.empty() ? colors::kDanger : colors::kTextDim);
     ImGui::Unindent(px(16.0f));
     focus_first();
@@ -522,7 +537,7 @@ void backup_screen(bool back) {
     // An Android app's own folders are out of the player's reach: there a
     // backup always goes to a folder picked in the system's picker.
     if (button_row("Back up to the backups folder",
-                   {names.empty(), {}, "Into " + utf8(backups_directory()) + "."})) {
+                   {names.empty(), {}, i18n::format("Into {}.", {utf8(backups_directory())})})) {
         std::error_code ec;
         fs::create_directories(backups_directory(), ec);
         start_backup(backups_directory());
@@ -531,7 +546,7 @@ void backup_screen(bool back) {
     if (button_row("Back up to another folder…", {names.empty(), {}, "Choose where the backup goes."}))
         open_browser(Stage::ChooseBackup);
 #if !defined(PORTABLEKIT_ANDROID_APP)
-    if (button_row("Open the backups folder", {false, {}, "Show " + utf8(backups_directory()) + "."}))
+    if (button_row("Open the backups folder", {false, {}, i18n::format("Show {}.", {utf8(backups_directory())})}))
         open_folder(backups_directory());
 #endif
     if (button_row("Cancel", {false, {}, "Back to the menu."})) close();
@@ -545,8 +560,9 @@ void confirm_backup_screen(bool back) {
     }
     section("Replace the earlier backup?");
     ImGui::Indent(px(16.0f));
-    paragraph(utf8(s.backup_target) + " already holds a backup of " + names_text(s.backup_conflicts) +
-              ". Backing up again replaces it with your saves as they are now.");
+    paragraph(i18n::format("{} already holds a backup of {}. Backing up again replaces it with your saves as they "
+                           "are now.",
+                           {utf8(s.backup_target), names_text(s.backup_conflicts)}));
     ImGui::Unindent(px(16.0f));
     focus_first();
     if (button_row("Cancel", {false, {}, "Keep the earlier backup."})) go(Stage::Backup);
@@ -624,7 +640,7 @@ void save_rows() {
     if (button_row("Open the saves folder",
                    {!available, {}, "Show the folder the game saves to (PSP/SAVEDATA) in the file manager."}))
         open_folder(sd::memory_stick() / "PSP" / "SAVEDATA");
-    if (button_row("Open the backups folder", {false, {}, "Show " + utf8(backups_directory()) + "."}))
+    if (button_row("Open the backups folder", {false, {}, i18n::format("Show {}.", {utf8(backups_directory())})}))
         open_folder(backups_directory());
 #endif
 }

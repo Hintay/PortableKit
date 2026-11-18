@@ -385,6 +385,13 @@ const std::vector<Field> &fields() {
              return true;
          },
          [](const Settings &s) { return s.adhoc_mac; }, [](Settings &s, const char *t) { s.adhoc_mac = t; }},
+        {"ui.language", "UI_LANGUAGE",
+         [](Settings &s, const std::string &t) {
+             s.ui_language = t.empty() ? "auto" : t;
+             return true;
+         },
+         [](const Settings &s) { return s.ui_language; },
+         [](Settings &s, const char *t) { s.ui_language = *t != '\0' ? t : "auto"; }},
         {"ui.menu_pause", "MENU_PAUSE",
          [](Settings &s, const std::string &t) { return parse_bool(t, s.menu_pause); },
          [](const Settings &s) { return std::string(s.menu_pause ? "1" : "0"); },

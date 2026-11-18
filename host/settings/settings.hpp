@@ -128,6 +128,7 @@ struct Settings {
     std::uint32_t adhoc_host_port{27312};   // the built-in server's adhocctl port; the relay is on the next
 
     // Interface
+    std::string ui_language{"auto"};   // the interface's language: "auto", or a code such as "en" or "zh-Hans"
     bool menu_pause{true};             // opening the menu pauses the game
     bool menu_pause_multiplayer{};     // ...also during ad hoc play, where a paused game stops answering its peers
     bool menu_hint_seen{};             // the "Esc / L3+R3 opens the menu" hint was shown

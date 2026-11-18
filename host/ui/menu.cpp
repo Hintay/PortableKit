@@ -6,6 +6,7 @@
 #include "ui/ui.hpp"
 
 #include "ui/font_menu.hpp"
+#include "ui/i18n.hpp"
 #include "ui/input_script.hpp"
 #include "ui/layer.hpp"
 #include "ui/save_screen.hpp"
@@ -82,7 +83,7 @@ RowOptions options_for(const char *key, std::string description) {
     options.description = std::move(description);
     if (const std::string variable = settings::overridden_by(key); !variable.empty()) {
         options.disabled = true;
-        options.note = "Set by " + variable;
+        options.note = i18n::format("Set by {}", {variable});
     }
     return options;
 }
@@ -213,7 +214,7 @@ void Menu::video() {
         const std::array<std::uint32_t, 2> size = renderer().target_size();
         const std::string drawn = std::to_string(size[0]) + "×" + std::to_string(size[1]);
         const std::string value =
-            (s.internal_scale == 0u ? std::string("Auto") : "×" + std::to_string(s.internal_scale)) + "   " + drawn;
+            (s.internal_scale == 0u ? std::string(i18n::tr("Auto")) : "×" + std::to_string(s.internal_scale)) + "   " + drawn;
         if (const int delta = choice_row("Resolution", value, o)) {
             // Auto, then ×1 up to the menu's largest (or a larger one a
             // variable once chose).
@@ -256,12 +257,13 @@ void Menu::video() {
         // Fill is offered only to a game that can widen its own view.
         const bool fill = gpu::VulkanRenderer::supports_fill();
         const int current = static_cast<int>(gpu::VulkanRenderer::usable_aspect(s.aspect));
-        const std::string description =
-            std::string("Original keeps the PSP's shape with black bars at the sides or top. Stretch fills the "
-                        "window by stretching the picture.") +
-            (fill ? " Fill widens (or narrows) the game's view to the window's shape, keeping its height, and "
-                    "keeps the interface in the PSP's proportions."
-                  : "");
+        // Two whole descriptions, so each is one catalogue key.
+        const char *const description =
+            fill ? "Original keeps the PSP's shape with black bars at the sides or top. Stretch fills the "
+                   "window by stretching the picture. Fill widens (or narrows) the game's view to the window's "
+                   "shape, keeping its height, and keeps the interface in the PSP's proportions."
+                 : "Original keeps the PSP's shape with black bars at the sides or top. Stretch fills the "
+                   "window by stretching the picture.";
         if (const int delta = choice_row("Aspect ratio", kAspects[current], options_for("video.aspect", description))) {
             s.aspect = static_cast<settings::Aspect>(cycle(current, delta, fill ? 3 : 2));
             renderer().set_aspect(s.aspect);
@@ -284,18 +286,21 @@ void Menu::video() {
     }
     {
         RowOptions o = options_for("video.texture_pack",
-                                   std::string("Draws an HD texture pack in PPSSPP's format from textures/") +
-                                       portablekit::game().disc_id + " in the data folder instead of the game's textures.");
+                                   i18n::format("Draws an HD texture pack in PPSSPP's format from textures/{} in "
+                                                "the data folder instead of the game's textures.",
+                                                {portablekit::game().disc_id}));
         // The footer shows the note under the description: what is loaded,
         // or where the pack was looked for.
         if (o.note.empty()) {
             const std::string status = renderer().texture_pack_status();
-            o.note = status == "Not installed" ? "No pack in " + renderer().texture_pack_folder() : status;
+            o.note = status == "Not installed" ? i18n::format("No pack in {}", {renderer().texture_pack_folder()})
+                                               : status;
             // A pack used in place that has moved: its path is on the "Pack
             // used from" row below; the footer has room for its name only.
             if (status.rfind("Folder missing: ", 0) == 0)
-                o.note = "Pack folder missing: " +
-                         install::path_to_utf8(install::path_from_utf8(status.substr(16)).filename());
+                o.note = i18n::format(
+                    "Pack folder missing: {}",
+                    {install::path_to_utf8(install::path_from_utf8(status.substr(16)).filename())});
         }
         if (choice_row("Texture pack", s.texture_pack ? "On" : "Off", o)) {
             s.texture_pack = !s.texture_pack;
@@ -336,15 +341,15 @@ void Menu::video() {
         static const double kRateValues[] = {0.0, 45.0, 60.0, 90.0, 120.0, 0.0};
         const auto offered = [&](int index) { return index == 0 || index == 5 || kRateValues[index] > own_rate + 0.5; };
         RowOptions o = options_for("video.frame_rate",
-                                   "Frames between the game's " + own_label +
-                                       " a second, blending its movement. Steps down by itself rather than slow "
-                                       "the game.");
+                                   i18n::format("Frames between the game's {} a second, blending its movement. "
+                                                "Steps down by itself rather than slow the game.",
+                                                {own_label}));
         if (s.unthrottled && !o.disabled) {
             o.disabled = true;
             o.note = "Game speed is Unlimited";
         }
         const int current = static_cast<int>(s.frame_rate);
-        std::string value = kRates[current];
+        std::string value = i18n::tr(kRates[current]);
         if (s.frame_rate == settings::FrameRate::Display && renderer().display_refresh() > 0.0f)
             value += "  " + std::to_string(static_cast<int>(std::lround(renderer().display_refresh()))) + " Hz";
         if (s.frame_rate != settings::FrameRate::Fps30 && !o.disabled) {
@@ -355,7 +360,8 @@ void Menu::video() {
                                       ? static_cast<double>(renderer().display_refresh())
                                       : std::stod(kRates[current]);
             if (now + 0.5 < chosen) {
-                value += " (running at " + std::to_string(static_cast<int>(std::lround(now))) + ")";
+                value = i18n::format("{} (running at {})",
+                                     {value, std::to_string(static_cast<int>(std::lround(now)))});
                 o.description = s.present_mode == settings::PresentMode::Fifo && renderer().display_refresh() > 0.0f &&
                                         now + 0.5 >= static_cast<double>(renderer().display_refresh())
                                     ? "With Vsync on, no faster than the display refreshes."
@@ -416,7 +422,7 @@ void Menu::video() {
     }
     font_rows();
     ImGui::Dummy({0.0f, font_gap()});
-    if (button_row("Restore video defaults", {false, {}, std::string("Every setting on this page back to how ") + portablekit::game().project_name + " ships."})) {
+    if (button_row("Restore video defaults", {false, {}, i18n::format("Every setting on this page back to how {} ships.", {portablekit::game().project_name})})) {
         const settings::Settings &d = settings::defaults();
         const auto restore = [&](const char *key, auto &value, const auto &fallback) {
             if (settings::overridden_by(key).empty()) value = fallback;
@@ -521,7 +527,7 @@ bool text_row(const char *id, const char *label, std::string &value, std::size_t
                             std::round(6.0f * Layer::get().scale()));
     draw->AddText({start.x + std::round(16.0f * Layer::get().scale()),
                    start.y + (row_height - Layer::get().font_size()) * 0.5f},
-                  o.disabled ? colors::kTextDisabled : colors::kText, label);
+                  o.disabled ? colors::kTextDisabled : colors::kText, i18n::tr(label));
     const float field_width = std::min(width * 0.45f, Layer::get().font_size() * 12.0f);
     ImGui::SetCursorScreenPos({start.x + width - field_width - std::round(16.0f * Layer::get().scale()),
                                start.y + (row_height - ImGui::GetFrameHeight()) * 0.5f});
@@ -538,8 +544,8 @@ bool text_row(const char *id, const char *label, std::string &value, std::size_t
     if (ImGui::IsItemActivated() && Layer::get().input_device() == InputDevice::Gamepad) {
         ImGui::ClearActiveID();
         TextInputRequest request;
-        request.title = label;
-        request.prompt = o.description;
+        request.title = i18n::tr(label);
+        request.prompt = i18n::tr(o.description);
         request.initial = value;
         request.max_length = max_length;
         request.allowed = allowed;
@@ -556,8 +562,8 @@ bool text_row(const char *id, const char *label, std::string &value, std::size_t
     }
     field.focused = ImGui::IsItemFocused();
     if (ImGui::IsItemFocused() || ImGui::IsItemHovered()) {
-        std::string description = o.description;
-        if (!o.note.empty()) description += "\n" + o.note;
+        std::string description = i18n::tr(o.description);
+        if (!o.note.empty()) description += "\n" + i18n::tr(o.note);
         Layer::get().set_description(description);
     }
     if (ImGui::IsItemDeactivatedAfterEdit() && (allow_empty || field.buffer[0] != '\0')) {
@@ -587,11 +593,12 @@ void Menu::tilt_controls() {
     settings::Settings &s = settings::current();
     section("Tilt controls");
     {
-        std::string description = "Tilt the gamepad, or the phone itself, to tilt the game: its motion sensors press "
-                                  "the tilt buttons, and the buttons keep working. It needs a gamepad with a "
-                                  "gyroscope (DualShock 4, DualSense, Switch Pro, a Steam Deck, with or without "
-                                  "Steam Input) or a phone.";
-        if (tilt->note != nullptr) description += std::string(" ") + tilt->note;
+        std::string description = i18n::tr(
+            "Tilt the gamepad, or the phone itself, to tilt the game: its motion sensors press "
+            "the tilt buttons, and the buttons keep working. It needs a gamepad with a "
+            "gyroscope (DualShock 4, DualSense, Switch Pro, a Steam Deck, with or without "
+            "Steam Input) or a phone.");
+        if (tilt->note != nullptr) description += std::string(" ") + i18n::tr(tilt->note);
         if (toggle_row("Tilt with motion", s.tilt, options_for("input.tilt", description))) {
             s.tilt = !s.tilt;
             settings::save();
@@ -710,9 +717,10 @@ void Menu::controls() {
     const bool cross_confirms = portablekit::game().confirm_button == 1u;
     if (choice_row("Confirm button", s.confirm_south ? "Bottom (Western)" : "Right (Japanese)",
                    options_for("input.confirm",
-                               std::string("Which face button confirms, in the game and in this menu. The game's "
-                                           "prompts show ") +
-                                   (cross_confirms ? "× to confirm and ○ to go back." : "○ to confirm and × to go back.")))) {
+                               cross_confirms ? "Which face button confirms, in the game and in this menu. The "
+                                                "game's prompts show × to confirm and ○ to go back."
+                                              : "Which face button confirms, in the game and in this menu. The "
+                                                "game's prompts show ○ to confirm and × to go back."))) {
         s.confirm_south = !s.confirm_south;
         settings::save();
     }
@@ -733,9 +741,9 @@ void Menu::controls() {
     if (const std::span<const TriggerProfile> profiles = portablekit::game().trigger_profiles; !profiles.empty()) {
         const int count = static_cast<int>(profiles.size()) + 1;
         const int current = std::min(static_cast<int>(s.trigger_profile), count - 1);
-        std::string description = "What LT/RT (L2/R2) press. Standard: L and R, like the shoulders.";
+        std::string description = i18n::tr("What LT/RT (L2/R2) press. Standard: L and R, like the shoulders.");
         if (const char *note = portablekit::game().trigger_profiles_note; note != nullptr)
-            description += std::string(" ") + note;
+            description += std::string(" ") + i18n::tr(note);
         if (const int delta = choice_row("Trigger profile",
                                          current == 0 ? "Standard (L / R)" : profiles[current - 1].label,
                                          options_for("input.trigger_profile", description))) {
@@ -910,16 +918,20 @@ void Menu::controls() {
         const auto action = static_cast<input::Action>(i);
         if (action == input::Action::Jump && portablekit::game().tilt == nullptr) continue;
         std::string value = input::format(s.bindings[i]);
-        if (binding_ == action) value = "Press a key or a mouse button";
-        else if (value.empty()) value = "None";
-        const RowOptions o{false, {},
-                           "Press a key or a mouse button to add it, or one it has already to remove it; Esc "
-                           "cancels. A key taken from another control leaves that one."};
+        // Key names are shown as the keyboard has them; only the menu's own
+        // words are translated.
+        if (binding_ == action) value = i18n::tr("Press a key or a mouse button");
+        else if (value.empty()) value = i18n::tr("None");
+        RowOptions o{false, {},
+                     "Press a key or a mouse button to add it, or one it has already to remove it; Esc "
+                     "cancels. A key taken from another control leaves that one."};
+        o.verbatim_value = true;
         std::string label = input::info(action).label;
         // The game's confirm and back buttons, as the console says.
         const bool cross_confirms = portablekit::game().confirm_button == 1u;
-        if (action == input::Action::Circle) label += cross_confirms ? "  (back)" : "  (confirm)";
-        if (action == input::Action::Cross) label += cross_confirms ? "  (confirm)" : "  (back)";
+        const bool backs = (action == input::Action::Circle) == cross_confirms;
+        if (action == input::Action::Circle || action == input::Action::Cross)
+            label = i18n::format(backs ? "{}  (back)" : "{}  (confirm)", {i18n::tr(label)});
         if (value_row(label.c_str(), value, o) && !binding_) {
             binding_ = action;
             layer.begin_binding_capture();
@@ -930,8 +942,8 @@ void Menu::controls() {
 
     ImGui::Dummy({0.0f, font_gap()});
     if (button_row("Restore control defaults",
-                   {false, {}, std::string("Every gamepad, keyboard, mouse, touch and name setting back to how ") +
-                                   portablekit::game().project_name + " ships."})) {
+                   {false, {}, i18n::format("Every gamepad, keyboard, mouse, touch and name setting back to how {} ships.",
+                                            {portablekit::game().project_name})})) {
         const settings::Settings &d = settings::defaults();
         const auto restore = [&](const char *key, auto &value, const auto &fallback) {
             if (settings::overridden_by(key).empty()) value = fallback;
@@ -1037,40 +1049,45 @@ std::string format_bytes(std::uint64_t bytes) {
     return text;
 }
 
-// One line of what the client is doing, for the menu and the overlay.
+// One line of what the client is doing, for the menu and the overlay; already
+// translated, since the overlay draws it as it is.
 std::string connection_text(const adhoc::Diagnostics &d) {
     switch (d.state) {
     case adhoc::ServerState::Off:
-        return d.server.empty() || !settings::current().adhoc ? "Off line" : "Off line (the game is not on line)";
-    case adhoc::ServerState::Connecting:
-        if (d.failed_attempts == 0u) return "Connecting…";
-        return "Reconnecting, attempt " + std::to_string(d.failed_attempts + 1u) +
-               (d.last_error.empty() ? "" : " (" + d.last_error + ")");
+        return i18n::tr(d.server.empty() || !settings::current().adhoc ? "Off line"
+                                                                       : "Off line (the game is not on line)");
+    case adhoc::ServerState::Connecting: {
+        if (d.failed_attempts == 0u) return i18n::tr("Connecting…");
+        const std::string attempt = std::to_string(d.failed_attempts + 1u);
+        return d.last_error.empty() ? i18n::format("Reconnecting, attempt {}", {attempt})
+                                    : i18n::format("Reconnecting, attempt {} ({})", {attempt, d.last_error});
+    }
     case adhoc::ServerState::Online: break;
     }
-    std::string text = "On line";
-    if (d.online_ms) text += " for " + format_duration(*d.online_ms);
+    std::string text = d.online_ms ? i18n::format("On line for {}", {format_duration(*d.online_ms)})
+                                   : std::string(i18n::tr("On line"));
     if (d.rtt_ms) {
         char rtt[32];
-        std::snprintf(rtt, sizeof(rtt), ", %.0f ms round trip", *d.rtt_ms);
-        text += rtt;
+        std::snprintf(rtt, sizeof(rtt), "%.0f", *d.rtt_ms);
+        text = i18n::format("{}, {} ms round trip", {text, rtt});
     }
     return text;
 }
 
 std::string group_text(const adhoc::Diagnostics &d) {
     if (d.group) {
-        std::string text = *d.group + ", " + std::to_string(d.peers.size() + 1u) + " players";
-        if (d.rejoin_ms) text += ", rejoining for " + format_duration(*d.rejoin_ms);
+        std::string text = i18n::format("{}, {} players", {*d.group, std::to_string(d.peers.size() + 1u)});
+        if (d.rejoin_ms) text = i18n::format("{}, rejoining for {}", {text, format_duration(*d.rejoin_ms)});
         return text;
     }
-    if (d.joining) return "Joining " + *d.joining + "…";
-    return "None";
+    if (d.joining) return i18n::format("Joining {}…", {*d.joining});
+    return i18n::tr("None");
 }
 
 std::string traffic_text(const adhoc::Traffic &t) {
-    return "in " + std::to_string(t.packets_in) + " (" + format_bytes(t.bytes_in) + "), out " +
-           std::to_string(t.packets_out) + " (" + format_bytes(t.bytes_out) + ")";
+    return i18n::format("in {} ({}), out {} ({})",
+                        {std::to_string(t.packets_in), format_bytes(t.bytes_in), std::to_string(t.packets_out),
+                         format_bytes(t.bytes_out)});
 }
 
 // The on-screen network overlay (menu: Network, or <prefix>_ADHOC_OVERLAY).
@@ -1091,15 +1108,15 @@ std::string &saved_log_path() {
 std::string group_name(const std::string &group) {
     if (group.size() == 8u && group.compare(0, 5, "MHP3Q") == 0 &&
         std::all_of(group.begin() + 5, group.end(), [](char c) { return c >= '0' && c <= '9'; })) {
-        char text[16];
-        std::snprintf(text, sizeof(text), "Hall %02d", std::atoi(group.c_str() + 5) + 1);
-        return text;
+        char number[16];
+        std::snprintf(number, sizeof(number), "%02d", std::atoi(group.c_str() + 5) + 1);
+        return i18n::format("Hall {}", {number});
     }
     return group;
 }
 
 std::string players_text(std::size_t count) {
-    return std::to_string(count) + (count == 1u ? " player" : " players");
+    return i18n::format(count == 1u ? "{} player" : "{} players", {std::to_string(count)});
 }
 
 // Hosting and joining a session.
@@ -1112,8 +1129,9 @@ void play_together() {
         const adhoc::ServerStatus status = adhoc_host_status();
         const std::string suffix =
             status.adhocctl_port == adhoc::kAdhocctlPort ? std::string() : ":" + std::to_string(status.adhocctl_port);
-        info_row("Hosting", players_text(status.players.size()) + " connected. Everyone now enters the Online Guild "
-                                                                  "Hall and picks the same hall.");
+        info_row("Hosting", i18n::format("{} connected. Everyone now enters the Online Guild Hall and picks the same "
+                                         "hall.",
+                                         {players_text(status.players.size())}));
         const std::vector<adhoc::LocalAddress> addresses = adhoc::local_addresses();
         if (addresses.empty()) info_row("Your addresses", "No network is connected");
         for (const adhoc::LocalAddress &address : addresses) {
@@ -1134,7 +1152,8 @@ void play_together() {
             const adhoc::ServerPlayer &player = status.players[i];
             ImGui::PushID(static_cast<int>(i));
             info_row(player.nickname.c_str(),
-                     player.address + "   " + (player.group ? group_name(*player.group) : std::string("not in a hall")));
+                     player.address + "   " +
+                         (player.group ? group_name(*player.group) : std::string(i18n::tr("not in a hall"))));
             ImGui::PopID();
         }
         ImGui::PopID();
@@ -1166,8 +1185,10 @@ void play_together() {
     };
     for (const adhoc::FoundHost &host : hosts) {
         const std::string address = host.join_address();
-        const std::string label = (joined(address) ? "Joined " : "Join ") + host.info.name + "   " + address + ", " +
-                                  players_text(host.info.players) + "###found " + std::to_string(host.info.session);
+        const std::string label =
+            i18n::format(joined(address) ? "Joined {}   {}, {}" : "Join {}   {}, {}",
+                         {host.info.name, address, players_text(host.info.players)}) +
+            "###found " + std::to_string(host.info.session);
         if (button_row(label.c_str(), {false, {}, "A session hosted on this network. Joining it takes you out of any "
                                                   "other; then enter the Online Guild Hall."}))
             adhoc_join(address);
@@ -1186,7 +1207,8 @@ void play_together() {
         if (std::any_of(hosts.begin(), hosts.end(),
                         [&](const adhoc::FoundHost &host) { return host.join_address() == address; }))
             continue;
-        const std::string label = (joined(address) ? "Joined " : "Join ") + address + "   recent###recent " + address;
+        const std::string label =
+            i18n::format(joined(address) ? "Joined {}   recent" : "Join {}   recent", {address}) + "###recent " + address;
         if (button_row(label.c_str(), {false, {}, "A session you joined before."})) adhoc_join(address);
     }
 }
@@ -1223,48 +1245,56 @@ void Menu::network() {
     info_row("Connection", connection_text(d));
     if (adhoc_hosting()) {
         const adhoc::ServerStatus st = adhoc_host_status();
-        info_row("Server", "TCP " + std::to_string(st.adhocctl_port) + " and " + std::to_string(st.relay_port) +
-                               ", up " + format_duration(st.uptime_ms) + ", " + players_text(st.players.size()) +
-                               ", " + std::to_string(st.groups) + " halls, " + std::to_string(st.relay_sessions) +
-                               " relay connections, " + std::to_string(st.streams) + " streams");
-        info_row("Relayed", std::to_string(st.relayed_packets) + " packets (" + format_bytes(st.relayed_bytes) +
-                                "), " + std::to_string(st.dropped) + " datagrams dropped");
+        info_row("Server", i18n::format("TCP {} and {}, up {}, {}, {} halls, {} relay connections, {} streams",
+                                        {std::to_string(st.adhocctl_port), std::to_string(st.relay_port),
+                                         format_duration(st.uptime_ms), players_text(st.players.size()),
+                                         std::to_string(st.groups), std::to_string(st.relay_sessions),
+                                         std::to_string(st.streams)}));
+        info_row("Relayed", i18n::format("{} packets ({}), {} datagrams dropped",
+                                         {std::to_string(st.relayed_packets), format_bytes(st.relayed_bytes),
+                                          std::to_string(st.dropped)}));
     }
     {
         const adhoc::DiscoveryStatus ds = adhoc::Discovery::get().status();
-        std::string text = ds.listening ? "Listening on UDP " + std::to_string(adhoc::kDiscoveryPort) + ", " +
-                                              std::to_string(ds.hosts) + " hosts heard"
-                                        : (ds.listen_error.empty() ? "Not listening" : ds.listen_error);
+        std::string text = ds.listening ? i18n::format("Listening on UDP {}, {} hosts heard",
+                                                       {std::to_string(adhoc::kDiscoveryPort), std::to_string(ds.hosts)})
+                                        : (ds.listen_error.empty() ? std::string(i18n::tr("Not listening"))
+                                                                   : ds.listen_error);
         if (ds.announcing)
-            text += "; announcing " + ds.announce_note + ", " + std::to_string(ds.announcements_sent) + " sent, " +
-                    std::to_string(ds.queries_answered) + " queries answered";
+            text = i18n::format("{}; announcing {}, {} sent, {} queries answered",
+                                {text, ds.announce_note, std::to_string(ds.announcements_sent),
+                                 std::to_string(ds.queries_answered)});
         info_row("Discovery", text);
         for (const adhoc::FoundHost &host : adhoc::Discovery::get().hosts())
-            info_row(("Host " + host.info.name).c_str(),
-                     host.join_address() + ", " + players_text(host.info.players) + ", " + host.info.product +
-                         ", heard " + format_duration(host.heard_ms) + " ago");
+            info_row(i18n::format("Host {}", {host.info.name}).c_str(),
+                     i18n::format("{}, {}, {}, heard {} ago",
+                                  {host.join_address(), players_text(host.info.players), host.info.product,
+                                   format_duration(host.heard_ms)}));
     }
     if (!d.server_address.empty()) info_row("Server address", d.server_address);
-    info_row("You", (s.adhoc_mac.empty() ? std::string("address made up on first use") : s.adhoc_mac) +
+    info_row("You", (s.adhoc_mac.empty() ? std::string(i18n::tr("address made up on first use")) : s.adhoc_mac) +
                         (d.nickname.empty() ? "" : "   " + d.nickname));
     info_row("Group", group_text(d));
     for (const adhoc::PeerSummary &peer : d.peers)
         info_row(peer.nickname.empty() ? "Player" : peer.nickname.c_str(),
                  adhoc::format_mac(peer.mac) + "   " +
-                     (peer.last_heard_ms ? "heard " + format_duration(*peer.last_heard_ms) + " ago" : "not heard yet"));
+                     (peer.last_heard_ms ? i18n::format("heard {} ago", {format_duration(*peer.last_heard_ms)})
+                                         : std::string(i18n::tr("not heard yet"))));
     for (const adhoc::SocketSummary &socket : d.sockets) {
         const std::string label = socket.kind + " " + std::to_string(socket.port);
-        info_row(label.c_str(), socket.state + (socket.peer ? "   " + adhoc::format_mac(*socket.peer) + " port " +
-                                                                  std::to_string(socket.peer_port)
-                                                            : std::string{}));
+        info_row(label.c_str(), socket.peer ? i18n::format("{}   {} port {}",
+                                                           {socket.state, adhoc::format_mac(*socket.peer),
+                                                            std::to_string(socket.peer_port)})
+                                            : socket.state);
     }
     if (d.relay_links_wanted != 0u)
-        info_row("Relay links", std::to_string(d.relay_links_up) + " of " + std::to_string(d.relay_links_wanted) +
-                                    " up");
+        info_row("Relay links", i18n::format("{} of {} up", {std::to_string(d.relay_links_up),
+                                                             std::to_string(d.relay_links_wanted)}));
     info_row("Per second", traffic_text(d.per_second));
     info_row("Since start", traffic_text(d.total));
-    info_row("Problems", std::to_string(d.dropped) + " datagrams dropped, " + std::to_string(d.timeouts) +
-                             " calls timed out, " + std::to_string(d.reconnects) + " reconnections");
+    info_row("Problems", i18n::format("{} datagrams dropped, {} calls timed out, {} reconnections",
+                                      {std::to_string(d.dropped), std::to_string(d.timeouts),
+                                       std::to_string(d.reconnects)}));
 
     section("Troubleshooting");
     if (toggle_row("Network overlay", network_overlay(),
@@ -1284,9 +1314,10 @@ void Menu::network() {
             directory = "logs";
         }
         const std::filesystem::path path = client.save_log(directory);
-        saved_log_path() = path.empty() ? "Could not write to " + install::path_to_utf8(directory)
-                                        : install::path_to_utf8(path);
-        std::cout << "[adhoc] network log: " << saved_log_path() << std::endl;
+        // The console keeps English; the row below shows the translation.
+        const std::string where = install::path_to_utf8(path.empty() ? directory : path);
+        saved_log_path() = path.empty() ? i18n::format("Could not write to {}", {where}) : where;
+        std::cout << "[adhoc] network log: " << (path.empty() ? "Could not write to " + where : where) << std::endl;
     }
     if (!saved_log_path().empty()) info_row("Saved", saved_log_path());
     if (button_row("Reconnect now", {d.state == adhoc::ServerState::Off, {},
@@ -1346,6 +1377,30 @@ void Menu::system() {
         s.menu_pause_multiplayer = !s.menu_pause_multiplayer;
         settings::save();
     }
+    {
+        // "auto", then each language there is a catalogue for.
+        std::size_t count = 0;
+        const i18n::LanguageInfo *list = i18n::languages(count);
+        const auto name_of = [&](const std::string &code) {
+            for (std::size_t i = 0; i < count; ++i)
+                if (code == list[i].code) return std::string(list[i].name);
+            return code;
+        };
+        int current = 0;
+        for (std::size_t i = 0; i < count; ++i)
+            if (s.ui_language == list[i].code) current = static_cast<int>(i) + 1;
+        const std::string value = current == 0 ? i18n::format("Automatic ({})", {name_of(i18n::automatic_code())})
+                                               : std::string(list[current - 1].name);
+        if (const int delta = choice_row(
+                "Language", value,
+                options_for("ui.language", "The language of this menu and the setup screens. Automatic takes the "
+                                           "language the game was released or translated in, then the system's."))) {
+            const int next = cycle(current, delta, static_cast<int>(count) + 1);
+            s.ui_language = next == 0 ? "auto" : list[next - 1].code;
+            i18n::apply(s.ui_language);
+            settings::save();
+        }
+    }
 #if defined(PORTABLEKIT_ANDROID_APP)
     // An Android app's data folder is out of the file manager's reach; its
     // log goes where the player picks instead, to send with a report.
@@ -1353,8 +1408,10 @@ void Menu::system() {
     const std::string project = portablekit::game().project_name;
     const std::string log_name = std::string(portablekit::game().app_name) + ".log";
     const std::string previous_log_name = std::string(portablekit::game().app_name) + "-previous.log";
-    if (button_row("Save the log…", {false, {}, "Copies " + project + "'s logs (this run's, the previous run's and "
-                                                "the logs folder) to a folder you pick, to send with a problem report."})) {
+    if (button_row("Save the log…", {false, {}, i18n::format("Copies {}'s logs (this run's, the previous run's and "
+                                                             "the logs folder) to a folder you pick, to send with a "
+                                                             "problem report.",
+                                                             {project})})) {
         std::fflush(stdout);
         std::fflush(stderr);
         std::error_code ec;
@@ -1371,11 +1428,11 @@ void Menu::system() {
         std::filesystem::remove_all(local.parent_path(), ec);
         if (copied)
             saved_log_path() = copied->error.empty() ? copied->where + "/" + install::path_to_utf8(local.filename())
-                                                     : "Not saved: " + copied->error;
+                                                     : i18n::format("Not saved: {}", {copied->error});
     }
     if (!saved_log_path().empty()) info_row("Log", saved_log_path());
 #else
-    if (button_row("Open the data folder", {false, {}, std::string("Show ") + portablekit::game().project_name + "'s data folder in the file manager."})) {
+    if (button_row("Open the data folder", {false, {}, i18n::format("Show {}'s data folder in the file manager.", {portablekit::game().project_name})})) {
         if (!SDL_OpenURL(file_url(data_dir).c_str()))
             std::cout << "[menu] cannot open " << data_dir << ": " << SDL_GetError() << "\n";
     }
@@ -1383,7 +1440,7 @@ void Menu::system() {
     if (button_row("Set up game data again…",
                    {false, {}, "Choose the disc image again, for example after moving it. The game closes first."}))
         confirm_ = Confirm::Setup;
-    if (button_row("Quit game", {false, {}, std::string("Close ") + portablekit::game().project_name + ". Progress since your last save is lost."},
+    if (button_row("Quit game", {false, {}, i18n::format("Close {}. Progress since your last save is lost.", {portablekit::game().project_name})},
                    colors::kDanger))
         confirm_ = Confirm::Quit;
 
@@ -1397,7 +1454,7 @@ void Menu::system() {
     info_row("Data folder", data_dir);
     if (!savedata::memory_stick().empty())
         info_row("Saves folder", install::path_to_utf8(savedata::memory_stick() / "PSP" / "SAVEDATA"));
-    info_row("Graphics", "Vulkan on " + renderer().device_name());
+    info_row("Graphics", i18n::format("Vulkan on {}", {renderer().device_name()}));
     info_row("Interface", std::string("Dear ImGui ") + IMGUI_VERSION);
 }
 
@@ -1419,9 +1476,10 @@ bool Menu::confirm_dialog() {
         confirm_opened_ = true;
         const bool quit = confirm_ == Confirm::Quit;
         heading(quit ? "Quit the game?" : "Set up game data again?");
-        paragraph(quit ? "Progress since your last save is lost."
-                       : std::string(portablekit::game().project_name) + " closes the game and opens the setup, where you choose the disc image again. "
-                         "Progress since your last save is lost.",
+        paragraph(quit ? std::string("Progress since your last save is lost.")
+                       : i18n::format("{} closes the game and opens the setup, where you choose the disc image again. "
+                                      "Progress since your last save is lost.",
+                                      {portablekit::game().project_name}),
                   colors::kTextDim);
         ImGui::Dummy({0.0f, font * 0.6f});
         const float gap = font * 0.6f;
@@ -1481,8 +1539,8 @@ void draw_network_overlay() {
     ImGui::SetWindowFontScale(0.75f);
     ImGui::TextUnformatted(connection_text(d).c_str());
     if (adhoc_hosting())
-        ImGui::TextUnformatted(("Hosting: " + players_text(adhoc_host_status().players.size())).c_str());
-    ImGui::TextUnformatted(("Group: " + group_text(d)).c_str());
+        ImGui::TextUnformatted(i18n::format("Hosting: {}", {players_text(adhoc_host_status().players.size())}).c_str());
+    ImGui::TextUnformatted(i18n::format("Group: {}", {group_text(d)}).c_str());
     for (const adhoc::PeerSummary &peer : d.peers)
         ImGui::TextUnformatted(("  " + peer.nickname + (peer.last_heard_ms ? "  " + format_duration(*peer.last_heard_ms)
                                                                            : std::string("  -")))
@@ -1490,13 +1548,14 @@ void draw_network_overlay() {
     std::size_t streams = 0;
     for (const adhoc::SocketSummary &socket : d.sockets)
         if (socket.kind != "PDP" && socket.state == "established") ++streams;
-    ImGui::TextUnformatted(("Links " + std::to_string(d.relay_links_up) + "/" + std::to_string(d.relay_links_wanted) +
-                            ", streams " + std::to_string(streams))
+    ImGui::TextUnformatted(i18n::format("Links {}/{}, streams {}",
+                                        {std::to_string(d.relay_links_up), std::to_string(d.relay_links_wanted),
+                                         std::to_string(streams)})
                                .c_str());
-    ImGui::TextUnformatted(("/s " + traffic_text(d.per_second)).c_str());
+    ImGui::TextUnformatted(i18n::format("/s {}", {traffic_text(d.per_second)}).c_str());
     if (d.dropped != 0u || d.timeouts != 0u)
         ImGui::TextUnformatted(
-            ("Dropped " + std::to_string(d.dropped) + ", timeouts " + std::to_string(d.timeouts)).c_str());
+            i18n::format("Dropped {}, timeouts {}", {std::to_string(d.dropped), std::to_string(d.timeouts)}).c_str());
     ImGui::End();
     ImGui::PopStyleVar();
 }

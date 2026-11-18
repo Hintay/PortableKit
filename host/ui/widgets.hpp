@@ -53,6 +53,7 @@ struct RowOptions {
     bool disabled{};
     std::string note;         // shown dimmed next to the value, e.g. who decides it
     std::string description;  // shown in the footer while the row is focused
+    bool verbatim_value{};    // the value is data (a key's name), shown as it is, not translated
 };
 
 // A setting with a few values, changed with left/right or by activating it.

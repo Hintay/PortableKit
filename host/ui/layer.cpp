@@ -7,6 +7,7 @@
 #include "ui/widgets.hpp"
 
 #include "fonts/game_font.hpp"
+#include "ui/i18n.hpp"
 #include "gpu/vulkan_renderer.hpp"
 #include "input/bindings.hpp"
 #include "install/user_data.hpp"
@@ -112,9 +113,11 @@ void load_fonts() {
         std::cout << "[ui] no system font found; using Dear ImGui's own\n";
         return;
     }
-    // A Chinese release's script before the Japanese face, so the characters
-    // both have take its shapes.
-    const fonts::ScriptFace script = fonts::script_face(text_language(portablekit::game()));
+    // A Chinese interface's or release's script before the Japanese face, so
+    // the characters both have take its shapes.
+    const std::string interface_language = i18n::current_code();
+    const fonts::ScriptFace script =
+        fonts::script_face(interface_language == "zh-Hans" ? 11u : text_language(portablekit::game()));
     if (!script.path.empty()) {
         ImFontConfig merge;
         merge.MergeMode = true;
@@ -179,6 +182,8 @@ bool Layer::attach(gpu::VulkanRenderer &renderer) {
     }
     // Any connected pad drives the interface, not only the one the game reads.
     ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
+    i18n::apply(settings::current().ui_language);
+    std::cout << "[ui] interface language " << i18n::current_code() << "\n";
     load_fonts();
     std::string error;
     if (!renderer.initialize_ui(error)) {
