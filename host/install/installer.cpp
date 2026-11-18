@@ -166,7 +166,9 @@ Inspection inspect(const std::filesystem::path &path) {
         throw InstallError("\"" + name + "\" is " + portablekit::game().game_title + " (" + portablekit::game().disc_id_display +
                            "), but its executable is not the version " + std::string(portablekit::game().project_name) + " supports. The image may be patched, "
                            "modified or damaged; make it again from an unmodified disc.");
-    result.info.size_bytes = iso->size_bytes();
+    // What a copy takes: the file's own size, which for a CHD is less than
+    // the image it holds.
+    result.info.size_bytes = std::filesystem::file_size(path);
     return result;
 }
 

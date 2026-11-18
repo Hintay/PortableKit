@@ -40,6 +40,7 @@ enum class ImageStorage {
 };
 
 struct ImageInfo {
+    // The size of the file, which is what copying it needs.
     std::uint64_t size_bytes{};
 };
 
