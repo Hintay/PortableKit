@@ -111,8 +111,8 @@ Inspection inspect(const std::filesystem::path &path) {
     try {
         iso.emplace(path);
     } catch (const std::exception &) {
-        throw InstallError("\"" + name + "\" is not a disc image " + std::string(portablekit::game().project_name) + " can read. Choose an uncompressed .iso image "
-                           "of the game's PSP disc.");
+        throw InstallError("\"" + name + "\" is not a disc image " + std::string(portablekit::game().project_name) + " can read. Choose an .iso image "
+                           "of the game's PSP disc, or a CHD made from one.");
     }
 
     const auto sfo_entry = iso->find(portablekit::game().param_sfo_path_on_disc);
@@ -381,7 +381,7 @@ std::string disc_id_of(const std::filesystem::path &image, std::string *title) {
         iso.emplace(image);
     } catch (const std::exception &) {
         throw InstallError("\"" + name + "\" is not a disc image " + std::string(portablekit::game().project_name) +
-                           " can read. Choose an uncompressed .iso image.");
+                           " can read. Choose an .iso image or a CHD made from one.");
     }
     const auto entry = iso->find("PSP_GAME/PARAM.SFO");
     if (!entry || entry->directory) throw InstallError("\"" + name + "\" is not a PSP game disc image.");

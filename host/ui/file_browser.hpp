@@ -12,7 +12,7 @@
 // under gamescope (Steam Deck Game Mode), so picking the disc image must work
 // with a gamepad alone: folders open with confirm, back goes up a folder,
 // common places (home, downloads, SD cards and other removable drives) are one
-// press away, and only .iso files are listed unless the player asks for all.
+// press away, and only disc images (.iso, .chd) are listed unless the player asks for all.
 // The menu's save import and export use it to choose folders.
 namespace portablekit::ui {
 
@@ -21,8 +21,8 @@ public:
     struct Options {
         // Files listed unless the player asks for all, as lower-case extensions.
         std::vector<std::string> extensions{".iso", ".chd"};
-        std::string filter_name{".iso"};          // "Showing .iso only"
-        std::string listed_name{".iso images"};   // "only .iso images are listed"
+        std::string filter_name{".iso and .chd"};       // "Showing .iso and .chd only"
+        std::string listed_name{".iso and .chd images"}; // "only .iso and .chd images are listed"
         std::string empty_note{"No folders or disc images here."};
         // A row that chooses the folder being shown, with this label; none when empty.
         std::string choose_folder;
